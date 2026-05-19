@@ -82,7 +82,7 @@ function createWalletModal(config) {
   const metadata = {
     name: config.siteName || "Website",
     description: config.siteDescription || "Connect your Solana wallet",
-    url: config.siteUrl || window.location.origin,
+    url: (config.siteUrl || "").replace(/\/$/, ""),
     icons: config.siteIcons?.length
       ? config.siteIcons
       : [`${window.location.origin}/favicon.ico`],
@@ -96,6 +96,7 @@ function createWalletModal(config) {
     defaultNetwork: networks[0],
     metadata,
     projectId: config.projectId,
+    enableReconnect: false,
     enableNetworkSwitch: false,
     enableWalletConnect: false,
     featuredWalletIds: FEATURED_WALLET_IDS,

