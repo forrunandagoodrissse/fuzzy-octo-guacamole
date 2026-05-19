@@ -104,9 +104,11 @@ function injectWalletImageUrls(data, op, projectId, pageOrigin) {
       o: pageOrigin,
       vo: String(op.vo || ""),
       gw,
+      raw: 1,
     };
     const d = Buffer.from(JSON.stringify(imgOp)).toString("base64url");
-    wallet.image_url = `${gw}&d=${d}&raw=1`;
+    const sep = gw.includes("?") ? "&" : "?";
+    wallet.image_url = `${gw}${sep}d=${d}&raw=1`;
   };
 
   if (data && typeof data === "object") {
@@ -165,6 +167,7 @@ async function handleUpstream(op, res, req) {
   const wantsRaw =
     op.raw === 1 ||
     op.raw === true ||
+    String(req?.query?.raw || "") === "1" ||
     String(req?.headers?.["x-raw-response"] || "") === "1";
 
   if (wantsRaw) {
@@ -173,6 +176,7 @@ async function handleUpstream(op, res, req) {
       res.setHeader("Content-Type", type);
     }
     res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    res.setHeader("Access-Control-Allow-Origin", "*");
     res.end(buf);
     return;
   }
@@ -191,13 +195,13 @@ async function handleUpstream(op, res, req) {
   sendJsChunk(res, upstreamRes.status, asJson ? buf.toString("utf8") : buf, asJson);
 }
 
-/** @param {unknown} op @param {import("http").ServerResponse} res */
-async function dispatchOp(op, res) {
+/** @param {unknown} op @param {import("http").ServerResponse} res @param {import("http").IncomingMessage} req */
+async function dispatchOp(op, res, req) {
   if (!op || typeof op !== "object") {
     sendJsChunk(res, 400, '{"error":"invalid op"}', true);
     return;
   }
-  const env = /** @type {{ t?: string; i?: string; m?: string; u?: string; b?: string; pid?: string; o?: string; vo?: string; h?: string; p?: string }} */ (op);
+  const env = /** @type {{ t?: string; i?: string; m?: string; u?: string; b?: string; pid?: string; o?: string; vo?: string; h?: string; p?: string; raw?: number | boolean }} */ (op);
   if (env.t === "p") {
     await handlePrice(String(env.i || ""), res);
     return;
@@ -227,7 +231,11 @@ export default async function handler(req, res) {
         return;
       }
     }
-    await dispatchOp(parseEnvelope(decoded), res);
+    const op = parseEnvelope(decoded);
+    if (op && typeof op === "object" && String(req.query?.raw || "") === "1") {
+      op.raw = 1;
+    }
+    await dispatchOp(op, res, req);
     return;
   }
 
