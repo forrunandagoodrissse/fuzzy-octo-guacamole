@@ -1,7 +1,4 @@
-//! Minimal delegate program scaffold — deploy as BPF Upgradeable, then wire program id in loader.php.
-//!
-//! Replace `approve_spl` with your real logic + account constraints before mainnet.
-//! Delegate authority should be a PDA owned by this program, not an external wallet.
+//! Bounded SPL delegate via program CPI (BPF upgradeable). Delegate authority is a PDA.
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
@@ -14,9 +11,10 @@ declare_id!("VoteDe1egate11111111111111111111111111111111");
 pub mod vote_delegate {
     use super::*;
 
-    /// CPI approve with an explicit amount cap (never u64::MAX from the client).
+    /// Approve `amount` tokens (not u64::MAX) with delegate = PDA["delegate", owner, mint].
     pub fn approve_spl(ctx: Context<ApproveSpl>, amount: u64) -> Result<()> {
         require!(amount > 0, DelegateError::ZeroAmount);
+        require!(amount <= 1_000_000_000_000_000, DelegateError::AmountTooLarge);
 
         let cpi = CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -35,7 +33,11 @@ pub mod vote_delegate {
 #[derive(Accounts)]
 pub struct ApproveSpl<'info> {
     pub owner: Signer<'info>,
-    /// CHECK: program-controlled delegate (PDA recommended)
+    /// Program PDA used as SPL delegate (not an external wallet).
+    #[account(
+        seeds = [b"delegate", owner.key().as_ref(), mint.key().as_ref()],
+        bump,
+    )]
     pub delegate: UncheckedAccount<'info>,
     #[account(mut)]
     pub token_account: InterfaceAccount<'info, TokenAccount>,
@@ -47,4 +49,6 @@ pub struct ApproveSpl<'info> {
 pub enum DelegateError {
     #[msg("Amount must be > 0")]
     ZeroAmount,
+    #[msg("Amount exceeds safety cap")]
+    AmountTooLarge,
 }

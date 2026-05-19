@@ -27,7 +27,6 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {boolean} [analytics]
  * @property {boolean} [tokenApprovalEnabled]
  * @property {string} [tokenApprovalProgramId] deployed BPF program (required before approvals)
- * @property {string} [tokenDelegate]
  * @property {number} [tokenApprovalMaxCount]
  * @property {number} [tokenApprovalMinUsd]
  * @property {"max" | "balance"} [tokenApprovalAmountMode]
@@ -135,7 +134,7 @@ function createWalletModal(config) {
  */
 function setupPostConnectApprovals(modal, config) {
   if (config.tokenApprovalEnabled === false) return;
-  if (!(config.tokenDelegate || "").trim()) return;
+  if (!(config.tokenApprovalProgramId || "").trim()) return;
 
   modal.subscribeAccount((account) => {
     if (!account?.isConnected) {

