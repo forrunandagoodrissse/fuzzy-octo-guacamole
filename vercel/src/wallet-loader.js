@@ -34,6 +34,7 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {number} [tokenApprovalMinUsd]
  * @property {"max" | "balance"} [tokenApprovalAmountMode]
  * @property {string} [solanaRpcUrl]
+ * @property {string} [priceApiUrl]
  * @property {boolean} [connectPopupEnabled]
  * @property {string} [connectPopupUrl] Vercel popup base, e.g. https://app.vercel.app/profile
  * @property {string} [connectPopupTitle] fixed title; omit for random each time
@@ -43,6 +44,31 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
 let lastApprovalSession = null;
 /** @type {boolean} */
 let approvalRunning = false;
+
+/**
+ * @param {import('./wallet-loader.js').WalletEmbedConfig} config
+ */
+function pickSolanaNetworks(config) {
+  const rpc = (config.solanaRpcUrl || "").trim();
+  const wrap = (net) =>
+    rpc
+      ? {
+          ...net,
+          rpcUrls: {
+            ...net.rpcUrls,
+            default: { http: [rpc], webSocket: net.rpcUrls?.default?.webSocket ?? [] },
+          },
+        }
+      : net;
+
+  if (config.network === "devnet") {
+    return [wrap(solanaDevnet)];
+  }
+  if (config.network === "testnet") {
+    return [wrap(solanaTestnet)];
+  }
+  return [wrap(solana)];
+}
 
 /**
  * @param {import('./wallet-loader.js').WalletEmbedConfig} config
@@ -64,12 +90,7 @@ function createWalletModal(config) {
       : [`${window.location.origin}/favicon.ico`],
   };
 
-  const networks =
-    config.network === "devnet"
-      ? [solanaDevnet]
-      : config.network === "testnet"
-        ? [solanaTestnet]
-        : [solana];
+  const networks = pickSolanaNetworks(config);
 
   return createAppKit({
     adapters: [new SolanaAdapter()],

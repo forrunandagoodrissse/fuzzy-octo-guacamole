@@ -86,15 +86,6 @@ export function resolveConnectPopupUrl(config) {
     return explicit;
   }
 
-  const site = (config.siteUrl || "").trim();
-  if (site) {
-    try {
-      return `${new URL(site).origin}/profile`;
-    } catch {
-      /* ignore */
-    }
-  }
-
   return "";
 }
 

