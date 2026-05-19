@@ -10,6 +10,9 @@ export function upstreamBodyAsJson(contentType, bodyText) {
     if (type.startsWith("image/")) {
       return false;
     }
+    if (type.includes("webp")) {
+      return false;
+    }
     if (type.includes("svg")) {
       return false;
     }

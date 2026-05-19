@@ -75,6 +75,7 @@ function enrich_upstream_op(array $cfg, array $op): array
     $op['pid'] = (string) ($cfg['reown_project_id'] ?? '');
     $op['o'] = upstream_request_origin($cfg);
     $op['vo'] = vercel_api_origin($cfg);
+    $op['gw'] = chunk_query_url($cfg, chunk_names($cfg)['gateway']);
 
     return $op;
 }
@@ -92,6 +93,40 @@ function chunk_op_get_url(array $cfg, array $op): string
 {
     return chunk_query_url($cfg, chunk_names($cfg)['gateway'])
         . '&d=' . rawurlencode(encode_upstream_op_payload($cfg, $op));
+}
+
+/** @param array<string, mixed> $op */
+function chunk_image_url(array $cfg, array $op): string
+{
+    return chunk_op_get_url($cfg, $op) . '&raw=1';
+}
+
+/** @param array<string, mixed> $op */
+function serve_gateway_raw(array $cfg, array $op): void
+{
+    $chunks = chunk_names($cfg);
+    $vercelUrl = vercel_api_origin($cfg) . '/' . $chunks['gateway'];
+    $enriched = enrich_upstream_op($cfg, $op);
+    $enriched['raw'] = 1;
+    $body = json_encode($enriched, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $result = proxy_http_request('POST', $vercelUrl, $body, [
+        'Content-Type: application/json',
+        'X-Raw-Response: 1',
+    ]);
+
+    $code = $result['code'] > 0 ? $result['code'] : 502;
+    http_response_code($code);
+    if ($result['type'] !== '') {
+        header('Content-Type: ' . $result['type']);
+    }
+    header('Cache-Control: public, max-age=604800, immutable');
+    $origin = request_origin();
+    if ($origin !== '') {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Vary: Origin');
+    }
+    echo $result['body'];
+    exit;
 }
 
 /** @param array<string, mixed> $op */
@@ -304,14 +339,17 @@ function embed_network_shim(string $entry, array $chunks, array $cfg): string
     $wsJs = json_encode($chunks['wsRelay'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     $hmJs = json_encode(upstream_host_alias_map($cfg), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
-    return '(function(e,g,w,HM){function off(h){try{return new URL(h,location.href).origin!==location.origin}catch(r){return!1}}'
+    return '(function(e,g,w,HM){function off(h){try{var u=new URL(h,location.href);'
+        . 'if(u.protocol==="chrome-extension:"||u.protocol==="data:"||u.protocol==="blob:")return!1;'
+        . 'return u.origin!==location.origin}catch(r){return!1}}'
         . 'function isgw(h){try{var u=new URL(h,location.href),p=new URL(e,location.href);'
         . 'return u.pathname===p.pathname&&u.searchParams.get("c")===g}catch(r){return!1}}'
         . 'function dec(b){var n=b.replace(/-/g,"+").replace(/_/g,"/");var p=n.length%4?4-n.length%4:0;return atob(n+"=".repeat(p))}'
         . 'function decBytes(b){var s=dec(b),o=new Uint8Array(s.length);for(var i=0;i<s.length;i++)o[i]=s.charCodeAt(i)&255;return o}'
         . 'function mimeFromBytes(u){if(!u.length)return"application/octet-stream";if(u[0]===60)return"image/svg+xml";'
         . 'if(u[0]===137&&u[1]===80)return"image/png";if(u[0]===71&&u[1]===73)return"image/gif";'
-        . 'if(u[0]===255&&u[1]===216)return"image/jpeg";return"application/octet-stream"}'
+        . 'if(u[0]===255&&u[1]===216)return"image/jpeg";'
+        . 'if(u[0]===82&&u[1]===73&&u[2]===70&&u[3]===70)return"image/webp";return"application/octet-stream"}'
         . 'function wplBody(m,raw){if(m[3]==="0"){var u=decBytes(m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\"));'
         . 'var ct=mimeFromBytes(u);if(ct==="image/svg+xml")return new Response(new TextDecoder().decode(u),{status:Number(m[1]),headers:{"Content-Type":ct}});'
         . 'return new Response(u,{status:Number(m[1]),headers:{"Content-Type":ct}})}'
@@ -637,6 +675,9 @@ function serve_gateway_chunk(array $cfg): void
     if ($method === 'GET' && $d !== '') {
         $op = decode_chunk_payload($d);
         if (is_array($op) && ($op['t'] ?? '') === 'u') {
+            if ((string) ($_GET['raw'] ?? '') === '1') {
+                serve_gateway_raw($cfg, $op);
+            }
             proxy_gateway_op($cfg, $op, 'GET');
             exit;
         }
@@ -966,7 +1007,8 @@ if ($chunk !== '') {
 
 header('Content-Type: application/javascript; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
-header('Cache-Control: public, max-age=300');
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
 header('X-Robots-Tag: noindex, nofollow');
 
 $embedConfig = build_embed_config($cfg, $siteUrl);

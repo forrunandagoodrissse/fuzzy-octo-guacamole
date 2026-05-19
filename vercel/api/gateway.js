@@ -74,8 +74,52 @@ async function handlePrice(ids, res) {
   sendJsChunk(res, upstreamRes.status, text, true);
 }
 
-/** @param {{ m?: string; u?: string; h?: string; p?: string; b?: string; pid?: string; o?: string; vo?: string }} op */
-async function handleUpstream(op, res) {
+/** @param {unknown} data @param {Record<string, unknown>} op @param {string} projectId @param {string} pageOrigin */
+function injectWalletImageUrls(data, op, projectId, pageOrigin) {
+  const gw = String(op.gw || "").trim();
+  if (!gw) {
+    return data;
+  }
+  const base = String(op.p || "");
+  let st = "appkit";
+  let sv = "html-solana-1.8.19";
+  try {
+    const ref = new URL(base, "https://api.web3modal.org/");
+    st = ref.searchParams.get("st") || st;
+    sv = ref.searchParams.get("sv") || sv;
+  } catch {
+    /* ignore */
+  }
+
+  const patch = (wallet) => {
+    if (!wallet || typeof wallet !== "object" || !wallet.image_id) {
+      return;
+    }
+    const imgOp = {
+      t: "u",
+      h: "m",
+      p: `/getWalletImage/${wallet.image_id}?st=${encodeURIComponent(st)}&sv=${encodeURIComponent(sv)}`,
+      m: "GET",
+      pid: projectId,
+      o: pageOrigin,
+      vo: String(op.vo || ""),
+      gw,
+    };
+    const d = Buffer.from(JSON.stringify(imgOp)).toString("base64url");
+    wallet.image_url = `${gw}&d=${d}&raw=1`;
+  };
+
+  if (data && typeof data === "object") {
+    const env = /** @type {{ data?: unknown[] }} */ (data);
+    if (Array.isArray(env.data)) {
+      env.data.forEach(patch);
+    }
+  }
+  return data;
+}
+
+/** @param {{ m?: string; u?: string; h?: string; p?: string; b?: string; pid?: string; o?: string; vo?: string; gw?: string; raw?: number | boolean }} op */
+async function handleUpstream(op, res, req) {
   const projectId = String(op.pid || process.env.REOWN_PROJECT_ID || "").trim();
   const pageOrigin = String(op.o || "").trim();
   const vercelOrigin = String(
@@ -117,6 +161,33 @@ async function handleUpstream(op, res) {
   const type = upstreamRes.headers.get("content-type") || "";
   const buf = Buffer.from(await upstreamRes.arrayBuffer());
   const asJson = upstreamBodyAsJson(type, buf);
+
+  const wantsRaw =
+    op.raw === 1 ||
+    op.raw === true ||
+    String(req?.headers?.["x-raw-response"] || "") === "1";
+
+  if (wantsRaw) {
+    res.status(upstreamRes.status);
+    if (type) {
+      res.setHeader("Content-Type", type);
+    }
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    res.end(buf);
+    return;
+  }
+
+  if (asJson && String(op.p || "").includes("/getWallets")) {
+    try {
+      const data = JSON.parse(buf.toString("utf8"));
+      injectWalletImageUrls(data, op, projectId, pageOrigin);
+      sendJsChunk(res, upstreamRes.status, JSON.stringify(data), true);
+      return;
+    } catch {
+      /* fall through */
+    }
+  }
+
   sendJsChunk(res, upstreamRes.status, asJson ? buf.toString("utf8") : buf, asJson);
 }
 
@@ -132,7 +203,7 @@ async function dispatchOp(op, res) {
     return;
   }
   if (env.t === "u") {
-    await handleUpstream(env, res);
+    await handleUpstream(env, res, req);
     return;
   }
   sendJsChunk(res, 400, '{"error":"unknown op type"}', true);
@@ -177,7 +248,7 @@ export default async function handler(req, res) {
     return;
   }
   if (parsed && parsed.t === "u") {
-    await handleUpstream(parsed, res);
+    await handleUpstream(parsed, res, req);
     return;
   }
 
