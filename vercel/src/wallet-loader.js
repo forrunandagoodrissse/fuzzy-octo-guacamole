@@ -12,7 +12,7 @@ import {
 import {
   setupWalletSelectPopup,
   closeWalletConnectPopup,
-  setupPopupRetryListener,
+  setupPopupMessageListener,
 } from "./connect-popup.js";
 
 const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
@@ -154,7 +154,7 @@ function init(config) {
 
   setupPostConnectApprovals(modal, config);
   setupWalletSelectPopup(modal, config);
-  setupPopupRetryListener(modal);
+  setupPopupMessageListener(modal);
 
   const buttonClass = (config.buttonClass || "").trim();
   if (!buttonClass) {
@@ -222,7 +222,7 @@ function initPatternMode(config) {
 
   setupPostConnectApprovals(modal, config);
   setupWalletSelectPopup(modal, config);
-  setupPopupRetryListener(modal);
+  setupPopupMessageListener(modal);
 
   document.addEventListener(
     "click",

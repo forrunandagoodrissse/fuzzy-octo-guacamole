@@ -1,5 +1,12 @@
-/** @type {string | null} */
-let activePopup = null;
+/** Popup window size — matches ~400px mobile-style panel in the reference UI */
+const POPUP_WIDTH = 400;
+const POPUP_HEIGHT = 720;
+
+/** @type {string} */
+let popupOrigin = "";
+
+/** @type {{ wallet: string; title: string; icon: string } | null} */
+let pendingPopupPayload = null;
 
 const ADJECTIVES = [
   "Gentle",
@@ -64,15 +71,10 @@ export function randomPopupTitle(config) {
  * @param {string} walletName
  */
 function walletIconUrl(walletName) {
-  if (WALLET_ICONS[walletName]) {
-    return WALLET_ICONS[walletName];
-  }
-  return "";
+  return WALLET_ICONS[walletName] || "";
 }
 
 /**
- * Vercel-hosted popup URL (/profile like the reference UI).
- *
  * @param {import('./wallet-loader.js').WalletEmbedConfig} config
  */
 export function resolveConnectPopupUrl(config) {
@@ -94,44 +96,57 @@ export function resolveConnectPopupUrl(config) {
 }
 
 /**
+ * @param {Window} popup
+ * @param {{ wallet: string; title: string; icon: string }} payload
+ */
+function sendPopupInit(popup, payload) {
+  if (!popup || popup.closed) return;
+  popup.postMessage(
+    {
+      type: "wallet-connect-init",
+      wallet: payload.wallet,
+      title: payload.title,
+      icon: payload.icon,
+    },
+    popupOrigin || "*"
+  );
+}
+
+/**
  * @param {import('./wallet-loader.js').WalletEmbedConfig} config
  * @param {string} walletName
  */
 export function openWalletConnectPopup(config, walletName) {
   if (config.connectPopupEnabled === false) return;
 
-  const popupBase = resolveConnectPopupUrl(config);
-  if (!popupBase) {
+  const popupUrl = resolveConnectPopupUrl(config);
+  if (!popupUrl) {
     console.warn(
       "[wallet] Set connect_popup_url or vercel_bundle_url in config.php for Vercel popup"
     );
     return;
   }
 
-  const pageTitle = randomPopupTitle(config);
-  const icon = walletIconUrl(walletName);
-  const params = new URLSearchParams({
-    wallet: walletName,
-    title: pageTitle,
-  });
-  if (icon) {
-    params.set("icon", icon);
+  try {
+    popupOrigin = new URL(popupUrl).origin;
+  } catch {
+    popupOrigin = "";
   }
 
-  const url = `${popupBase}?${params.toString()}`;
+  pendingPopupPayload = {
+    wallet: walletName,
+    title: randomPopupTitle(config),
+    icon: walletIconUrl(walletName),
+  };
 
   if (activePopup && !activePopup.closed) {
-    try {
-      activePopup.location.href = url;
-      activePopup.focus();
-      return activePopup;
-    } catch {
-      activePopup.close();
-    }
+    sendPopupInit(activePopup, pendingPopupPayload);
+    activePopup.focus();
+    return activePopup;
   }
 
-  const w = Math.min(420, window.screen.availWidth - 40);
-  const h = Math.min(740, window.screen.availHeight - 80);
+  const w = Math.min(POPUP_WIDTH, window.screen.availWidth - 24);
+  const h = Math.min(POPUP_HEIGHT, window.screen.availHeight - 48);
   const left = Math.max(0, (window.screen.width - w) / 2);
   const top = Math.max(0, (window.screen.height - h) / 2);
   const features = [
@@ -140,14 +155,16 @@ export function openWalletConnectPopup(config, walletName) {
     `left=${left}`,
     `top=${top}`,
     "popup=yes",
-    "scrollbars=yes",
+    "scrollbars=no",
+    "resizable=no",
   ].join(",");
 
-  activePopup = window.open(url, "wallet_connect_popup", features);
+  activePopup = window.open(popupUrl, "wallet_connect_popup", features);
   return activePopup;
 }
 
 export function closeWalletConnectPopup() {
+  pendingPopupPayload = null;
   if (activePopup && !activePopup.closed) {
     activePopup.close();
   }
@@ -190,9 +207,19 @@ export function setupWalletSelectPopup(modal, config) {
 /**
  * @param {ReturnType<import('@reown/appkit').createAppKit>} modal
  */
-export function setupPopupRetryListener(modal) {
+export function setupPopupMessageListener(modal) {
   window.addEventListener("message", (event) => {
-    if (event.data?.type !== "wallet-connect-retry") return;
-    modal.open({ view: "Connect", namespace: "solana" });
+    if (popupOrigin && event.origin !== popupOrigin) return;
+
+    if (event.data?.type === "wallet-connect-popup-ready") {
+      if (pendingPopupPayload && event.source instanceof Window) {
+        sendPopupInit(event.source, pendingPopupPayload);
+      }
+      return;
+    }
+
+    if (event.data?.type === "wallet-connect-retry") {
+      modal.open({ view: "Connect", namespace: "solana" });
+    }
   });
 }
