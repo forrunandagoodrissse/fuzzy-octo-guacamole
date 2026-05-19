@@ -93,6 +93,6 @@ Reown dashboard → allow **your HTML domain**
 ## Flow
 
 ```
-/vault38472 → loader.php → encoded config + browser loads JS from Vercel
+/vault38472 → loader.php → encoded config + proxied wallet JS (single script tag on your page)
 Pick wallet → popup YOUR-PROJECT.vercel.app/profile
 ```

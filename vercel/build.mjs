@@ -19,29 +19,6 @@ const bundleOut = join("public", assetNames.bundle);
 const profileScriptOut = join("public/profile", assetNames.profileScript);
 const profileHtmlPath = "public/profile/index.html";
 
-const SKIP_OBFUSCATE = /[/\\]src[/\\](?:browser-shims|solana-wallets)\.js$/;
-
-/** Obfuscate project source before esbuild bundles vendor deps (fast on small files). */
-const obfuscateSourcePlugin = {
-  name: "obfuscate-src",
-  setup(build) {
-    build.onLoad({ filter: /[/\\]src[/\\].+\.js$/ }, async (args) => {
-      if (SKIP_OBFUSCATE.test(args.path)) {
-        return { contents: await readFile(args.path, "utf8"), loader: "js" };
-      }
-
-      const source = await readFile(args.path, "utf8");
-      return {
-        contents: obfuscateJs(source, {
-          controlFlowFlatteningThreshold: 1,
-          stringArrayWrappersCount: 2,
-        }),
-        loader: "js",
-      };
-    });
-  },
-};
-
 const gen = spawnSync(process.execPath, ["scripts/generate-solana-wallets.mjs"], {
   stdio: "inherit",
 });
@@ -83,7 +60,7 @@ await esbuild.build({
   sourcemap: false,
   legalComments: "none",
   inject: ["src/browser-shims.js"],
-  plugins: [browserDepsPlugin(), obfuscateSourcePlugin],
+  plugins: [browserDepsPlugin()],
 });
 
 const bundleJs = await readFile(bundleOut, "utf8");
@@ -93,8 +70,15 @@ if (bundleJs.includes("Dynamic require of")) {
   );
   process.exit(1);
 }
+const dynamicImports = [...bundleJs.matchAll(/import\s*\(/g)].length;
+if (dynamicImports > 0 || bundleJs.includes("@reown/appkit-scaffold-ui/")) {
+  console.error(
+    `Bundle has ${dynamicImports} dynamic import() and/or bare @reown/appkit-scaffold-ui paths — AppKit modal will fail in the browser.`,
+  );
+  process.exit(1);
+}
 
-console.log(`Built ${bundleOut} (app code obfuscated, vendor minified only)`);
+console.log(`Built ${bundleOut} (minified, AppKit scaffold inlined)`);
 
 const profileSource = await readFile("src/profile-page.js", "utf8");
 const obfuscatedProfile = obfuscateJs(profileSource, {

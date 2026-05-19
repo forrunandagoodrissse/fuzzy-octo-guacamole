@@ -86,10 +86,10 @@ export function resolveConnectPopupUrl(config) {
     return explicit;
   }
 
-  const bundle = (config.vercelBundleUrl || "").trim();
-  if (bundle) {
+  const site = (config.siteUrl || "").trim();
+  if (site) {
     try {
-      return `${new URL(bundle).origin}/profile`;
+      return `${new URL(site).origin}/profile`;
     } catch {
       /* ignore */
     }
@@ -125,7 +125,7 @@ export function openWalletConnectPopup(config, walletName) {
   const popupUrl = resolveConnectPopupUrl(config);
   if (!popupUrl) {
     console.warn(
-      "[wallet] Set connect_popup_url or vercel_bundle_url in config.php for Vercel popup"
+      "[wallet] Set connect_popup_url or site_url in loader.php for Vercel popup"
     );
     return;
   }

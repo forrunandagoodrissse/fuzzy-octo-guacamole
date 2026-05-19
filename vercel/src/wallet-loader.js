@@ -36,7 +36,6 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {string} [solanaRpcUrl]
  * @property {boolean} [connectPopupEnabled]
  * @property {string} [connectPopupUrl] Vercel popup base, e.g. https://app.vercel.app/profile
- * @property {string} [vercelBundleUrl] used to derive popup URL if connectPopupUrl omitted
  * @property {string} [connectPopupTitle] fixed title; omit for random each time
  */
 
@@ -89,6 +88,9 @@ function createWalletModal(config) {
       connectMethodsOrder: ["wallet"],
       swaps: false,
       onramp: false,
+      send: false,
+      receive: false,
+      pay: false,
     },
   });
 }

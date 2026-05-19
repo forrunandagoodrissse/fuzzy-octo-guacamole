@@ -55,7 +55,6 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'solanaRpcUrl' => (string) ($cfg['solana_rpc_url'] ?? ''),
         'connectPopupEnabled' => (bool) ($cfg['connect_popup_enabled'] ?? true),
         'connectPopupUrl' => (string) ($cfg['connect_popup_url'] ?? ''),
-        'vercelBundleUrl' => (string) ($cfg['vercel_bundle_url'] ?? ''),
         'connectPopupTitle' => (string) ($cfg['connect_popup_title'] ?? ''),
     ];
 }
@@ -133,15 +132,6 @@ function embed_config_preamble(array $embedConfig): string
         . '{value:c,writable:!1,enumerable:!1,configurable:!1})})(window,atob,JSON);';
 }
 
-/** Load wallet JS from Vercel in the browser (VPS does not proxy the bundle). */
-function embed_bundle_loader(): string
-{
-    return '(function(w){var c=w.__WALLET_EMBED_CONFIG__;if(!c||!c.vercelBundleUrl){'
-        . 'console.error("[wallet] missing vercelBundleUrl");return}'
-        . 'var s=document.createElement("script");s.src=c.vercelBundleUrl;'
-        . 's.defer=1;s.crossOrigin="anonymous";document.head.appendChild(s)})(window);';
-}
-
 function send_generic_not_found(): void
 {
     http_response_code(404);
@@ -188,6 +178,71 @@ function assert_vercel_bundle_url(string $url): void
     }
 }
 
+function wallet_bundle_fetch_error(string $detail = ''): void
+{
+    $GLOBALS['__wallet_bundle_fetch_error'] = $detail;
+}
+
+function wallet_bundle_fetch_last_error(): string
+{
+    return (string) ($GLOBALS['__wallet_bundle_fetch_error'] ?? '');
+}
+
+function fetch_vercel_bundle_remote(string $url): ?string
+{
+    wallet_bundle_fetch_error('');
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            wallet_bundle_fetch_error('curl_init failed');
+            return null;
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_CONNECTTIMEOUT => 20,
+            CURLOPT_TIMEOUT => 180,
+            CURLOPT_USERAGENT => 'wallet-embed-loader/1.0',
+            CURLOPT_ENCODING => '',
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        ]);
+        $body = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
+        curl_close($ch);
+        if ($body === false || $code < 200 || $code >= 300) {
+            wallet_bundle_fetch_error(
+                $code > 0 ? "HTTP {$code}" . ($curlErr !== '' ? ", {$curlErr}" : '') : ($curlErr !== '' ? $curlErr : 'curl failed'),
+            );
+            return null;
+        }
+        return (string) $body;
+    }
+
+    $ctx = stream_context_create([
+        'http' => ['timeout' => 180, 'header' => "User-Agent: wallet-embed-loader/1.0\r\n"],
+        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+    ]);
+    $body = @file_get_contents($url, false, $ctx);
+    if ($body === false || $body === '') {
+        wallet_bundle_fetch_error('file_get_contents failed (enable php-curl on the VPS)');
+        return null;
+    }
+    return $body;
+}
+
+function load_wallet_bundle(array $cfg): ?string
+{
+    $vercelUrl = trim((string) ($cfg['vercel_bundle_url'] ?? ''));
+    if ($vercelUrl === '') {
+        return null;
+    }
+    assert_vercel_bundle_url($vercelUrl);
+    return fetch_vercel_bundle_remote($vercelUrl);
+}
+
 $siteUrl = detect_site_url($cfg);
 
 if (!script_request_allowed($cfg, $siteUrl)) {
@@ -219,6 +274,25 @@ try {
     exit;
 }
 
+try {
+    $bundle = load_wallet_bundle($cfg);
+} catch (RuntimeException $e) {
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Invalid vercel_bundle_url: ' . $e->getMessage();
+    exit;
+}
+
+if ($bundle === null || $bundle === '') {
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=utf-8');
+    $hint = wallet_bundle_fetch_last_error();
+    echo 'Could not fetch wallet bundle'
+        . ($hint !== '' ? " ({$hint})" : '')
+        . ' — check vercel_bundle_url; install php-curl if needed';
+    exit;
+}
+
 echo embed_config_preamble($embedConfig);
 echo "\n";
-echo embed_bundle_loader();
+echo $bundle;
