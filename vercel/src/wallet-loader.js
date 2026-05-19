@@ -101,7 +101,7 @@ function createWalletModal(config) {
     featuredWalletIds: FEATURED_WALLET_IDS,
     includeWalletIds: INCLUDE_WALLET_IDS,
     features: {
-      analytics: config.analytics !== false,
+      analytics: false,
       email: false,
       socials: false,
       connectMethodsOrder: ["wallet"],

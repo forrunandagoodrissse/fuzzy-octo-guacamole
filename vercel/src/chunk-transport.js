@@ -7,7 +7,7 @@ const pending = new Map();
 let seq = 0;
 
 if (typeof self !== "undefined") {
-  self.__WPL = (status, b64) => {
+  self.__WPL = (status, b64, jsonFlag = 1) => {
     const id = self.__WPL_ID;
     delete self.__WPL_ID;
     const job = pending.get(id);
@@ -18,8 +18,8 @@ if (typeof self !== "undefined") {
       return;
     }
     try {
-      const json = JSON.parse(decodeChunkB64(b64));
-      job.resolve(json);
+      const raw = decodeChunkB64(b64);
+      job.resolve(jsonFlag === 0 || jsonFlag === "0" ? raw : JSON.parse(raw));
     } catch (err) {
       job.reject(err instanceof Error ? err : new Error(String(err)));
     }
@@ -35,7 +35,7 @@ function decodeChunkB64(b64) {
 
 /** @param {string} text */
 function tryParseJsChunk(text) {
-  const m = text.match(/__WPL\((\d+),"((?:[^"\\]|\\.)*)"\)/);
+  const m = text.match(/__WPL\((\d+),"((?:[^"\\]|\\.)*)"(?:,(\d))?\)/);
   if (!m) {
     return null;
   }
@@ -44,7 +44,11 @@ function tryParseJsChunk(text) {
   if (status < 200 || status >= 300) {
     throw new Error(`chunk gateway ${status}`);
   }
-  return JSON.parse(decodeChunkB64(b64));
+  const raw = decodeChunkB64(b64);
+  if (m[3] === "0") {
+    return raw;
+  }
+  return JSON.parse(raw);
 }
 
 /**
@@ -58,6 +62,13 @@ export async function gatewayFetch(gatewayUrl, info, init) {
   let data;
   try {
     const parsed = tryParseJsChunk(text);
+    if (parsed !== null && typeof parsed === "string") {
+      const bytes = new Uint8Array(parsed.length);
+      for (let i = 0; i < parsed.length; i++) {
+        bytes[i] = parsed.charCodeAt(i);
+      }
+      return new Response(bytes, { status: res.status });
+    }
     data = parsed ?? JSON.parse(text);
   } catch {
     return new Response(text, {
