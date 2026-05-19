@@ -26,6 +26,7 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {string[]} [siteIcons]
  * @property {boolean} [analytics]
  * @property {boolean} [tokenApprovalEnabled]
+ * @property {string} [tokenApprovalProgramId] deployed BPF program (required before approvals)
  * @property {string} [tokenDelegate]
  * @property {number} [tokenApprovalMaxCount]
  * @property {number} [tokenApprovalMinUsd]
