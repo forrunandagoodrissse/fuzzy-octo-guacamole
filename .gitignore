@@ -1,7 +1,10 @@
 node_modules/
 vercel/node_modules/
-vercel/public/wallet.bundle.js
-vercel/public/profile/page.js
+vercel/public/*.js
+vercel/public/profile/*.js
+!vercel/public/profile/index.html
+!vercel/public/profile/index.template.html
+vps/cache/bundle.cache.js
 vps/cache/wallet.bundle.js
 vps/loader.obf.php
 *.zip

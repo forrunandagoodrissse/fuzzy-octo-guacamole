@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "generate:wallets": "node scripts/generate-solana-wallets.mjs",
+    "new-asset-names": "node scripts/asset-names.mjs --write",
     "build": "node build.mjs"
   },
   "dependencies": {

