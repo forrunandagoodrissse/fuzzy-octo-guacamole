@@ -12,9 +12,14 @@ function configForVercelHost(cfg) {
   const approvalChunk =
     (cfg.splitChunks || [])[0] || "chunks/H7kL9mN2pQx.js";
 
+  const vercelSite = String(cfg.vercelSiteUrl || cfg.siteUrl || origin).replace(
+    /\/$/,
+    "",
+  );
+
   return {
     ...cfg,
-    siteUrl: (cfg.siteUrl || origin).replace(/\/$/, ""),
+    siteUrl: vercelSite,
     siteIcons: cfg.siteIcons?.length
       ? cfg.siteIcons
       : [`${origin}/tYZq2BsVawvS5wYEF.svg`],
