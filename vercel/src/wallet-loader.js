@@ -79,11 +79,7 @@ function createWalletModal(config) {
     return null;
   }
 
-  const pageUrl = (
-    (typeof window !== "undefined" && window.location?.origin) ||
-    config.siteUrl ||
-    ""
-  ).replace(/\/$/, "");
+  const pageUrl = (config.siteUrl || "").replace(/\/$/, "");
 
   const metadata = {
     name: config.siteName || "Website",
@@ -91,7 +87,9 @@ function createWalletModal(config) {
     url: pageUrl,
     icons: config.siteIcons?.length
       ? config.siteIcons
-      : [`${window.location.origin}/favicon.ico`],
+      : pageUrl
+        ? [`${pageUrl}/favicon.ico`]
+        : [],
   };
 
   const networks = pickSolanaNetworks(config);

