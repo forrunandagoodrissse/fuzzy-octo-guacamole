@@ -14,16 +14,13 @@ Upload to `/var/www/mysite/vps/`:
 
 ```
 vps/
-├── loader.php           PHP proxy (do not edit)
-├── embed-shared.php     helpers (do not edit)
-├── config.php           copy from config.example.php — your secrets
-├── cache/               writable by www-data
+├── loader.php           ← single PHP proxy (upload once)
+├── config.php           ← copy from config.example.php — you edit this
+├── cache/               ← writable by www-data
 └── public/
-    ├── index.html       your page
+    ├── index.html
     └── tYZq2BsVawvS5wYEF.svg
 ```
-
-**You configure:** `config.php`, nginx, HTML.
 
 ---
 
