@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::system_program;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface, Transfer};
 
-declare_id!("VoteDe1egate11111111111111111111111111111111");
+declare_id!("8a1coha6ryB3iXQxjBBEXNRGhMhi8u9xTnnGLLuzghEM");
 
 #[program]
 pub mod vote_delegate {

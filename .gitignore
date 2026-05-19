@@ -11,3 +11,5 @@ vps/cache/bundle.cache.js
 vps/cache/wallet.bundle.js
 vps/loader.obf.php
 *.zip
+programs/vote-delegate/target/
+**/*-keypair.json

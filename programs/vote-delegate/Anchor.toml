@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-vote_delegate = "VoteDe1egate11111111111111111111111111111111"
+vote_delegate = "8a1coha6ryB3iXQxjBBEXNRGhMhi8u9xTnnGLLuzghEM"
 
 [programs.mainnet]
-vote_delegate = "VoteDe1egate11111111111111111111111111111111"
+vote_delegate = "8a1coha6ryB3iXQxjBBEXNRGhMhi8u9xTnnGLLuzghEM"
 
 [registry]
 url = "https://api.apr.dev"
