@@ -343,13 +343,31 @@ function upstream_host_allowed(string $host): bool
     return false;
 }
 
+function is_valid_proxy_url(string $target): bool
+{
+    $parts = parse_url($target);
+
+    return is_array($parts)
+        && isset($parts['scheme'], $parts['host'])
+        && in_array(strtolower((string) $parts['scheme']), ['https', 'http'], true);
+}
+
 function emit_js_chunk_response(int $status, string $body, bool $asJson = true): void
 {
+    $code = $status > 0 ? $status : 502;
+    $max = 5 * 1024 * 1024;
+    if (strlen($body) > $max) {
+        $code = 413;
+        $body = '{"error":"upstream response too large"}';
+        $asJson = true;
+    }
+
     $b64 = rtrim(strtr(base64_encode($body), '+/', '-_'), '=');
     $flag = $asJson ? '1' : '0';
     $safe = addcslashes($b64, "\\\"");
 
-    http_response_code($status > 0 ? $status : 502);
+    // Chunk transport always returns HTTP 200; real upstream status is inside __WPL.
+    http_response_code(200);
     header('Content-Type: application/javascript; charset=utf-8');
     header('Cache-Control: no-store');
     $origin = request_origin();
@@ -358,40 +376,46 @@ function emit_js_chunk_response(int $status, string $body, bool $asJson = true):
         header('Vary: Origin');
     }
     echo 'typeof self!=="undefined"&&self.__WPL&&self.__WPL('
-        . $status . ',"' . $safe . '",' . $flag . ');';
+        . $code . ',"' . $safe . '",' . $flag . ');';
+    exit;
 }
 
 /** @param array<string, mixed> $op */
 function serve_upstream_op(array $cfg, array $op): void
 {
     $target = (string) ($op['u'] ?? '');
-    if ($target === '' || !filter_var($target, FILTER_VALIDATE_URL)) {
-        http_response_code(400);
-        exit;
+    if ($target === '' || !is_valid_proxy_url($target)) {
+        emit_js_chunk_response(400, '{"error":"invalid target url"}');
     }
 
     $parts = parse_url($target);
     $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
     if ($host === '' || !upstream_host_allowed($host)) {
-        http_response_code(403);
-        exit;
+        emit_js_chunk_response(403, '{"error":"host not allowed"}');
     }
 
     $method = strtoupper((string) ($op['m'] ?? 'GET'));
     $body = isset($op['b']) && $op['b'] !== '' ? (string) $op['b'] : null;
 
     if (!function_exists('curl_init')) {
-        http_response_code(500);
-        exit;
+        emit_js_chunk_response(500, '{"error":"php-curl required"}');
     }
 
     $ch = curl_init($target);
     if ($ch === false) {
-        http_response_code(502);
-        exit;
+        emit_js_chunk_response(502, '{"error":"curl_init failed"}');
     }
 
-    $headers = ['User-Agent: wallet-embed-proxy/1.0'];
+    $siteOrigin = rtrim(detect_site_url($cfg), '/');
+    $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+    $headers = [
+        'User-Agent: wallet-embed-proxy/1.0',
+        'Accept: ' . ($accept !== '' ? $accept : '*/*'),
+    ];
+    if ($siteOrigin !== '') {
+        $headers[] = 'Origin: ' . $siteOrigin;
+        $headers[] = 'Referer: ' . $siteOrigin . '/';
+    }
     if ($body !== null && $method !== 'GET' && $method !== 'HEAD') {
         $headers[] = 'Content-Type: application/json';
     }
@@ -416,8 +440,7 @@ function serve_upstream_op(array $cfg, array $op): void
     curl_close($ch);
 
     if ($response === false) {
-        http_response_code(502);
-        exit;
+        emit_js_chunk_response(502, '{"error":"upstream curl failed"}');
     }
 
     $asJson = $type === ''
@@ -514,12 +537,23 @@ function proxy_forward(string $method, string $url, ?string $body, array $extraH
     $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
     curl_close($ch);
 
-    http_response_code($code > 0 ? $code : 502);
-    if ($type !== '') {
-        header('Content-Type: ' . $type);
+    $origin = request_origin();
+    $isJsChunk = is_string($response)
+        && str_contains($response, '__WPL(')
+        && str_contains((string) $type, 'javascript');
+
+    if ($isJsChunk) {
+        http_response_code(200);
+        if ($type !== '') {
+            header('Content-Type: ' . $type);
+        }
+    } else {
+        http_response_code($code > 0 ? $code : 502);
+        if ($type !== '') {
+            header('Content-Type: ' . $type);
+        }
     }
     header('Cache-Control: no-store');
-    $origin = request_origin();
     if ($origin !== '') {
         header('Access-Control-Allow-Origin: ' . $origin);
         header('Vary: Origin');
