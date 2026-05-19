@@ -1,4 +1,32 @@
 /**
+ * @param {string} contentType
+ * @param {string} bodyText
+ */
+export function upstreamBodyAsJson(contentType, bodyText) {
+  const type = (contentType || "").split(";")[0].trim().toLowerCase();
+  if (type) {
+    if (type.startsWith("image/")) {
+      return false;
+    }
+    if (type.includes("svg")) {
+      return false;
+    }
+    if (type.includes("octet-stream")) {
+      return false;
+    }
+    if (type.includes("json")) {
+      return true;
+    }
+    if (type === "text/plain" || type === "text/html") {
+      return true;
+    }
+    return false;
+  }
+  const start = bodyText.trimStart();
+  return start.length > 0 && (start[0] === "{" || start[0] === "[");
+}
+
+/**
  * Wrap upstream payloads as executable JS chunk responses (DevTools → script, not JSON API).
  * @param {import("http").ServerResponse} res
  * @param {number} status

@@ -11,6 +11,7 @@ export function upstreamHostAllowed(host) {
     "helius-rpc.com",
     "googleapis.com",
     "gstatic.com",
+    "vercel.app",
   ];
   return suffixes.some(
     (suffix) => h === suffix || h.endsWith("." + suffix),

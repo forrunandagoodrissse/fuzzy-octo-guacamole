@@ -1,18 +1,33 @@
 import { parseAllowedTarget } from "./_allowlist.js";
-import { sendJsChunk } from "./_chunk-response.js";
+import { sendJsChunk, upstreamBodyAsJson } from "./_chunk-response.js";
+import {
+  injectProjectIdBody,
+  resolveUpstreamTarget,
+} from "./_routes.js";
 
 /** @param {import("http").IncomingMessage} req */
-function readBody(req) {
-  if (typeof req.body === "string") {
+async function readBody(req) {
+  if (typeof req.body === "string" && req.body.length > 0) {
     return req.body;
   }
+  if (Buffer.isBuffer(req.body)) {
+    return req.body.toString("utf8");
+  }
   if (req.body && typeof req.body === "object") {
-    if (req.body.jsonrpc) {
+    const keys = Object.keys(req.body);
+    if (keys.length > 0) {
       return JSON.stringify(req.body);
     }
-    return JSON.stringify(req.body);
   }
-  return "";
+
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => {
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
 }
 
 /** @param {string} payload */
@@ -34,8 +49,7 @@ async function handleRpc(body, res) {
     ""
   ).trim();
   if (!upstream) {
-    res.status(500).setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.end("HELIUS_RPC_URL not configured");
+    sendJsChunk(res, 500, '{"error":"HELIUS_RPC_URL not configured"}', true);
     return;
   }
 
@@ -51,7 +65,7 @@ async function handleRpc(body, res) {
 /** @param {string} ids */
 async function handlePrice(ids, res) {
   if (!ids || !/^[A-Za-z0-9:,_-]+$/.test(ids)) {
-    res.status(400).end();
+    sendJsChunk(res, 400, '{"error":"invalid price ids"}', true);
     return;
   }
   const upstream = `https://api.jup.ag/price/v2?ids=${encodeURIComponent(ids)}`;
@@ -60,43 +74,65 @@ async function handlePrice(ids, res) {
   sendJsChunk(res, upstreamRes.status, text, true);
 }
 
-/** @param {{ m?: string; u?: string; b?: string }} op */
+/** @param {{ m?: string; u?: string; h?: string; p?: string; b?: string; pid?: string; o?: string; vo?: string }} op */
 async function handleUpstream(op, res) {
-  const target = parseAllowedTarget(String(op.u || ""));
+  const projectId = String(op.pid || process.env.REOWN_PROJECT_ID || "").trim();
+  const pageOrigin = String(op.o || "").trim();
+  const vercelOrigin = String(
+    op.vo ||
+      process.env.SITE_URL ||
+      process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+      process.env.VERCEL_URL ||
+      "",
+  ).trim();
+
+  const target = resolveUpstreamTarget(
+    { projectId, vercelOrigin },
+    op,
+    parseAllowedTarget,
+  );
   if (!target) {
-    res.status(op.u ? 403 : 400).end();
+    sendJsChunk(res, 403, '{"error":"invalid target"}', true);
     return;
   }
+
   const method = (op.m || "GET").toUpperCase();
-  const headers = {};
+  const headers = {
+    Accept: "application/json, text/plain, image/*, */*",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  };
+  if (pageOrigin) {
+    headers.Origin = pageOrigin;
+    headers.Referer = `${pageOrigin}/`;
+  }
+
   let body;
   if (method !== "GET" && method !== "HEAD" && op.b != null && op.b !== "") {
-    body = op.b;
+    body = injectProjectIdBody(String(op.b), projectId);
     headers["Content-Type"] = "application/json";
   }
 
   const upstreamRes = await fetch(target, { method, headers, body });
   const type = upstreamRes.headers.get("content-type") || "";
   const buf = Buffer.from(await upstreamRes.arrayBuffer());
-  const asJson =
-    type.includes("json") ||
-    type.includes("text") ||
-    type.includes("javascript");
+  const text = buf.toString("utf8");
+  const asJson = upstreamBodyAsJson(type, text);
   sendJsChunk(
     res,
     upstreamRes.status,
-    asJson ? buf.toString("utf8") : buf.toString("binary"),
+    asJson ? text : buf.toString("binary"),
     asJson,
   );
 }
 
-/** @param {unknown} op */
+/** @param {unknown} op @param {import("http").ServerResponse} res */
 async function dispatchOp(op, res) {
   if (!op || typeof op !== "object") {
-    res.status(400).end();
+    sendJsChunk(res, 400, '{"error":"invalid op"}', true);
     return;
   }
-  const env = /** @type {{ t?: string; i?: string; m?: string; u?: string; b?: string }} */ (op);
+  const env = /** @type {{ t?: string; i?: string; m?: string; u?: string; b?: string; pid?: string; o?: string; vo?: string; h?: string; p?: string }} */ (op);
   if (env.t === "p") {
     await handlePrice(String(env.i || ""), res);
     return;
@@ -105,14 +141,14 @@ async function dispatchOp(op, res) {
     await handleUpstream(env, res);
     return;
   }
-  res.status(400).end();
+  sendJsChunk(res, 400, '{"error":"unknown op type"}', true);
 }
 
 export default async function handler(req, res) {
   if (req.method === "GET") {
-    const raw = String(req.query.d || "");
+    const raw = String(req.query?.d || "");
     if (!raw) {
-      res.status(405).end();
+      sendJsChunk(res, 405, '{"error":"missing d query"}', true);
       return;
     }
     let decoded;
@@ -122,7 +158,7 @@ export default async function handler(req, res) {
       try {
         decoded = Buffer.from(raw, "base64").toString("utf8");
       } catch {
-        res.status(400).end();
+        sendJsChunk(res, 400, '{"error":"invalid d encoding"}', true);
         return;
       }
     }
@@ -131,11 +167,11 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== "POST") {
-    res.status(405).end();
+    sendJsChunk(res, 405, '{"error":"method not allowed"}', true);
     return;
   }
 
-  const raw = readBody(req);
+  const raw = await readBody(req);
   const parsed = parseEnvelope(raw);
 
   if (parsed && parsed.jsonrpc) {
@@ -151,5 +187,5 @@ export default async function handler(req, res) {
     return;
   }
 
-  res.status(400).end();
+  sendJsChunk(res, 400, '{"error":"unrecognized post body"}', true);
 }
