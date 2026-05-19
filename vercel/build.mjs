@@ -4,11 +4,15 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { obfuscateJs } from "./scripts/obfuscate.mjs";
+import { syncVercelJsonHeaders } from "./scripts/sync-vercel-json.mjs";
 
 const profileHtmlTpl = "public/profile/index.template.html";
 
 /** @type {{ bundle: string; profileScript: string }} */
 const assetNames = JSON.parse(await readFile("asset-names.json", "utf8"));
+
+syncVercelJsonHeaders(assetNames);
+console.log("Synced vercel.json headers");
 
 const bundleOut = join("public", assetNames.bundle);
 const profileScriptOut = join("public/profile", assetNames.profileScript);

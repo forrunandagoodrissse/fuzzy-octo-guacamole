@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { syncVercelJsonHeaders } from "./sync-vercel-json.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const file = join(root, "..", "asset-names.json");
@@ -29,4 +30,6 @@ const names = {
 };
 
 writeFileSync(file, JSON.stringify(names, null, 2) + "\n", "utf8");
+syncVercelJsonHeaders(names);
 console.log("Wrote asset-names.json:", names);
+console.log("Synced vercel.json headers");

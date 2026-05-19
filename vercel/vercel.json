@@ -6,7 +6,7 @@
   "outputDirectory": "public",
   "headers": [
     {
-      "source": "/**/*.js",
+      "source": "/p7KqN2mR9vXw.js",
       "headers": [
         {
           "key": "Cache-Control",
@@ -15,6 +15,15 @@
         {
           "key": "Access-Control-Allow-Origin",
           "value": "*"
+        }
+      ]
+    },
+    {
+      "source": "/profile/h4JfL8sT1nBc.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
         }
       ]
     }
