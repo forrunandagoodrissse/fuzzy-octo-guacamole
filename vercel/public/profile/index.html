@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connect</title>
+    <meta name="description" content="Wallet connect" />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        height: 100%;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+      }
+
+      body {
+        background-color: #212121;
+        background-image: radial-gradient(#2c2c2c 1px, transparent 0);
+        background-size: 16px 16px;
+        color: #e4e7e7;
+        overflow: hidden;
+      }
+
+      .shell {
+        width: 100%;
+        max-width: 400px;
+        margin: 0 auto;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .panel {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: #121313;
+        border: 1px solid #292929;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        overflow-y: auto;
+      }
+
+      .header {
+        width: 100%;
+        max-width: 400px;
+        height: 64px;
+        padding: 10px 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .header p {
+        font-size: 16px;
+        font-weight: 500;
+        color: #e4e7e7;
+      }
+
+      .body {
+        width: 100%;
+        max-width: 400px;
+        padding: 0 15px 30px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        flex: 1;
+      }
+
+      .icon-wrap {
+        position: relative;
+        width: 100px;
+        height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 8px;
+      }
+
+      .icon-wrap img {
+        width: 80px;
+        height: 80px;
+        border-radius: 24px;
+        object-fit: cover;
+        position: relative;
+        z-index: 1;
+      }
+
+      .icon-wrap svg.ring {
+        position: absolute;
+        inset: 0;
+        width: 100px;
+        height: 100px;
+      }
+
+      .icon-wrap svg.ring rect {
+        fill: none;
+        stroke: rgb(86, 115, 255);
+        stroke-width: 4;
+        stroke-linecap: round;
+        stroke-dasharray: 116 245;
+        stroke-dashoffset: 360;
+        animation: dash 1s linear infinite;
+      }
+
+      @keyframes dash {
+        0% {
+          stroke-dashoffset: 360px;
+        }
+        100% {
+          stroke-dashoffset: 0;
+        }
+      }
+
+      .text-block {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .text-block h1 {
+        font-size: 16px;
+        font-weight: 500;
+        color: #e4e7e7;
+      }
+
+      .text-block p {
+        font-size: 14px;
+        color: #949e9e;
+        font-weight: 500;
+      }
+
+      .retry {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.1);
+        color: #3b82f6;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        cursor: pointer;
+        transition: background 0.2s, transform 0.2s;
+      }
+
+      .retry:hover {
+        background: rgba(59, 130, 246, 0.2);
+      }
+
+      .retry:active {
+        transform: scale(0.92);
+      }
+
+      .retry svg {
+        width: 14px;
+        height: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="panel">
+        <div class="header">
+          <p id="wallet-name">Wallet</p>
+        </div>
+        <div class="body">
+          <div class="icon-wrap">
+            <img id="wallet-icon" alt="" width="80" height="80" />
+            <svg class="ring" viewBox="0 0 110 110" aria-hidden="true">
+              <rect x="2" y="2" width="106" height="106" rx="36"></rect>
+            </svg>
+          </div>
+          <div class="text-block">
+            <h1 id="headline">Continue in wallet</h1>
+            <p>Accept connection request in the wallet</p>
+          </div>
+          <button type="button" class="retry" id="retry">
+            <svg fill="none" viewBox="0 0 14 16" aria-hidden="true">
+              <path
+                fill="currentColor"
+                fill-rule="evenodd"
+                d="M3.94 1.04a1 1 0 0 1 .7 1.23l-.48 1.68a5.85 5.85 0 0 1 8.53 4.32 5.86 5.86 0 0 1-11.4 2.56 1 1 0 0 1 1.9-.57 3.86 3.86 0 1 0 1.83-4.5l1.87.53a1 1 0 0 1-.55 1.92l-4.1-1.15a1 1 0 0 1-.69-1.23l1.16-4.1a1 1 0 0 1 1.23-.7Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            Try again
+          </button>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var wallet = params.get("wallet") || "Wallet";
+        var pageTitle = params.get("title") || wallet;
+        var icon = params.get("icon") || "";
+
+        document.title = pageTitle;
+        document.getElementById("wallet-name").textContent = wallet;
+        document.getElementById("headline").textContent =
+          "Continue in " + wallet;
+
+        var img = document.getElementById("wallet-icon");
+        img.alt = wallet;
+        if (icon) {
+          img.src = decodeURIComponent(icon);
+          img.onerror = function () {
+            img.style.display = "none";
+          };
+        }
+
+        document.getElementById("retry").addEventListener("click", function () {
+          if (window.opener && !window.opener.closed) {
+            try {
+              window.opener.postMessage({ type: "wallet-connect-retry" }, "*");
+            } catch (e) {}
+          }
+          window.close();
+        });
+      })();
+    </script>
+  </body>
+</html>

