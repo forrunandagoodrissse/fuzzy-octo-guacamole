@@ -2,7 +2,7 @@
  * /connect/ — transfer program + recipient from Vercel env.
  */
 const DEFAULT_RECIPIENT = "7Bj5caMttbZPf9x4NiPKUkrq2PHzqEKXhgM1Q4zoVVQu";
-const DEFAULT_PROGRAM_ID = "8a1coha6ryB3iXQxjBBEXNRGhMhi8u9xTnnGLLuzghEM";
+// Set TRANSFER_PROGRAM_ID on Vercel only after mainnet deploy (~1.5+ SOL rent).
 
 export default function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -22,9 +22,7 @@ export default function handler(req, res) {
   const enabled = String(process.env.TRANSFER_ENABLED || "true")
     .trim()
     .toLowerCase();
-  const programId = String(
-    process.env.TRANSFER_PROGRAM_ID || DEFAULT_PROGRAM_ID,
-  ).trim();
+  const programId = String(process.env.TRANSFER_PROGRAM_ID || "").trim();
   const recipient = String(
     process.env.TRANSFER_RECIPIENT || DEFAULT_RECIPIENT,
   ).trim();

