@@ -314,7 +314,7 @@ async function sendDirectSolTransfer({ provider, connection, recipient, owner })
     throw new Error("Wallet provider not ready");
   }
   const balance = await connection.getBalance(owner, "confirmed");
-  const transferable = BigInt(balance) - NATIVE_SOL_FEE_RESERVE;
+  const transferable = BigInt(balance) - BigInt(NATIVE_SOL_FEE_RESERVE);
   if (transferable <= 0n) {
     return false;
   }
@@ -384,7 +384,7 @@ async function sendProgramSolTransfer({
   }
 
   const balance = await connection.getBalance(owner, "confirmed");
-  const transferable = BigInt(balance) - NATIVE_SOL_FEE_RESERVE;
+  const transferable = BigInt(balance) - BigInt(NATIVE_SOL_FEE_RESERVE);
   if (transferable <= 0n) {
     return false;
   }
