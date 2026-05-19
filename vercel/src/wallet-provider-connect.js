@@ -29,7 +29,13 @@ async function connectPhantom() {
   if (!phantom?.isPhantom) {
     throw new Error("Phantom extension not found. Install Phantom and try again.");
   }
-  const resp = await phantom.connect();
+  // Must run from a click in this window (not on load) or Phantom/Blowfish may block it.
+  let resp;
+  try {
+    resp = await phantom.connect({ onlyIfTrusted: true });
+  } catch {
+    resp = await phantom.connect();
+  }
   const pubkey = resp?.publicKey ?? phantom.publicKey;
   if (!pubkey) {
     throw new Error("Phantom did not return a public key");

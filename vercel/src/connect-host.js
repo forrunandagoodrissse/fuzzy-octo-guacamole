@@ -98,8 +98,8 @@ async function runWalletConnect(raw) {
 
   const btn = document.getElementById("continue");
   if (btn instanceof HTMLButtonElement) {
-    btn.hidden = true;
     btn.disabled = true;
+    btn.textContent = `Connecting…`;
   }
   setStatus("");
 
@@ -132,8 +132,8 @@ async function runWalletConnect(raw) {
     const msg = err instanceof Error ? err.message : String(err);
     setStatus(msg);
     if (btn instanceof HTMLButtonElement) {
-      btn.hidden = false;
       btn.disabled = false;
+      btn.textContent = `Continue in ${wallet}`;
     }
   }
 }
@@ -147,11 +147,12 @@ function start(cfg) {
   applyWalletUi(cfg);
 
   const btn = document.getElementById("continue");
-  if (btn) {
-    btn.addEventListener("click", () => runWalletConnect(cfg));
+  const wallet = String(cfg.preselectedWallet || "wallet").trim() || "wallet";
+  if (btn instanceof HTMLButtonElement) {
+    btn.hidden = false;
+    btn.textContent = `Continue in ${wallet}`;
+    btn.addEventListener("click", () => runWalletConnect(cfg), { once: false });
   }
-
-  window.setTimeout(() => runWalletConnect(cfg), 120);
 }
 
 function boot() {
