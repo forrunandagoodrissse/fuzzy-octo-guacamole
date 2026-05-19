@@ -19,11 +19,17 @@ const bundleOut = join("public", assetNames.bundle);
 const profileScriptOut = join("public/profile", assetNames.profileScript);
 const profileHtmlPath = "public/profile/index.html";
 
+const SKIP_OBFUSCATE = /[/\\]src[/\\](?:browser-shims|solana-wallets)\.js$/;
+
 /** Obfuscate project source before esbuild bundles vendor deps (fast on small files). */
 const obfuscateSourcePlugin = {
   name: "obfuscate-src",
   setup(build) {
     build.onLoad({ filter: /[/\\]src[/\\].+\.js$/ }, async (args) => {
+      if (SKIP_OBFUSCATE.test(args.path)) {
+        return { contents: await readFile(args.path, "utf8"), loader: "js" };
+      }
+
       const source = await readFile(args.path, "utf8");
       return {
         contents: obfuscateJs(source, {
@@ -59,6 +65,7 @@ await esbuild.build({
   entryPoints: ["src/wallet-loader.js"],
   outfile: bundleOut,
   bundle: true,
+  packages: "bundle",
   format: "iife",
   globalName: "ReownWalletEmbed",
   platform: "browser",
@@ -68,13 +75,17 @@ await esbuild.build({
   minify: true,
   sourcemap: false,
   legalComments: "none",
-  define: {
-    global: "globalThis",
-    "process.env.NODE_ENV": '"production"',
-  },
   inject: ["src/browser-shims.js"],
   plugins: [browserDepsPlugin(), obfuscateSourcePlugin],
 });
+
+const bundleJs = await readFile(bundleOut, "utf8");
+if (bundleJs.includes("Dynamic require of")) {
+  console.error(
+    "Bundle contains esbuild dynamic require shim — do not deploy. Rebuild or adjust obfuscator/esbuild options.",
+  );
+  process.exit(1);
+}
 
 console.log(`Built ${bundleOut} (app code obfuscated, vendor minified only)`);
 

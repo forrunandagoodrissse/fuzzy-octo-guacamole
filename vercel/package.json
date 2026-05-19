@@ -5,7 +5,8 @@
   "scripts": {
     "generate:wallets": "node scripts/generate-solana-wallets.mjs",
     "new-asset-names": "node scripts/asset-names.mjs --write",
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "verify-bundle": "node scripts/check-bundle.mjs"
   },
   "dependencies": {
     "@reown/appkit": "^1.7.8",

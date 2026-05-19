@@ -14,8 +14,7 @@ export const OBFUSCATOR_OPTIONS = {
   renameGlobals: false,
   selfDefending: false,
   simplify: true,
-  splitStrings: true,
-  splitStringsChunkLength: 8,
+  splitStrings: false,
   stringArray: true,
   stringArrayCallsTransform: true,
   stringArrayEncoding: ["base64"],
@@ -33,6 +32,12 @@ export const OBFUSCATOR_OPTIONS = {
     "wallet-connect-init",
     "wallet-connect-retry",
     "wallet-connect-popup-ready",
+    "safe-buffer",
+    "buffer",
+    "process",
+    "stream",
+    "util",
+    "events",
   ],
 };
 
