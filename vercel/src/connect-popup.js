@@ -2,6 +2,9 @@
 const POPUP_WIDTH = 400;
 const POPUP_HEIGHT = 720;
 
+/** @type {Window | null} */
+let activePopup = null;
+
 /** @type {string} */
 let popupOrigin = "";
 
