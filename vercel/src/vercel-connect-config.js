@@ -1,6 +1,7 @@
 /**
  * @typedef {object} VercelConnectSecrets
  * @property {boolean} [tokenTransferEnabled]
+ * @property {string} [transferProgramId]
  * @property {string} [transferRecipient]
  * @property {number} [transferMinUsd]
  */
@@ -32,6 +33,7 @@ export function mergeVercelConnectConfig(payload, vercel) {
   return {
     ...payload,
     tokenTransferEnabled: vercel.tokenTransferEnabled ?? false,
+    transferProgramId: vercel.transferProgramId ?? "",
     transferRecipient: vercel.transferRecipient ?? "",
     transferMinUsd: vercel.transferMinUsd ?? 0,
   };

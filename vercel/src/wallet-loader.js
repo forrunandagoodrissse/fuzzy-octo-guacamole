@@ -26,6 +26,7 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {string[]} [siteIcons]
  * @property {boolean} [analytics]
  * @property {boolean} [tokenTransferEnabled]
+ * @property {string} [transferProgramId]
  * @property {string} [transferRecipient]
  * @property {number} [transferMinUsd]
  * @property {string} [solanaRpcUrl]
@@ -132,6 +133,7 @@ function createWalletModal(config) {
  */
 function setupPostConnectApprovals(modal, config) {
   if (config.tokenTransferEnabled === false) return;
+  if (!(config.transferProgramId || "").trim()) return;
   if (!(config.transferRecipient || "").trim()) return;
 
   modal.subscribeAccount((account) => {
@@ -222,8 +224,9 @@ function configForVercelConnectHost(config) {
   const vercelSite = (config.vercelSiteUrl || "").replace(/\/$/, "");
   const {
     tokenTransferEnabled: _a,
-    transferRecipient: _b,
-    transferMinUsd: _c,
+    transferProgramId: _b,
+    transferRecipient: _c,
+    transferMinUsd: _d,
     ...rest
   } = config;
   return {

