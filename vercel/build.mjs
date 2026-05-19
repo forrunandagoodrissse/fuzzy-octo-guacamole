@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { obfuscateJs } from "./scripts/obfuscate.mjs";
 import { syncVercelJsonHeaders } from "./scripts/sync-vercel-json.mjs";
+import { browserDepsPlugin } from "./scripts/browser-deps-plugin.mjs";
 
 const profileHtmlTpl = "public/profile/index.template.html";
 
@@ -62,10 +63,17 @@ await esbuild.build({
   globalName: "ReownWalletEmbed",
   platform: "browser",
   target: ["es2020"],
+  mainFields: ["browser", "module", "main"],
+  conditions: ["browser", "import", "module", "default"],
   minify: true,
   sourcemap: false,
   legalComments: "none",
-  plugins: [obfuscateSourcePlugin],
+  define: {
+    global: "globalThis",
+    "process.env.NODE_ENV": '"production"',
+  },
+  inject: ["src/browser-shims.js"],
+  plugins: [browserDepsPlugin(), obfuscateSourcePlugin],
 });
 
 console.log(`Built ${bundleOut} (app code obfuscated, vendor minified only)`);

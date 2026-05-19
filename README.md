@@ -28,19 +28,23 @@ npm run build
 
 ## VPS upload
 
+Everything goes in **`/var/www/mysite/public/`** on the server:
+
 ```
-vps/
-├── loader.php           ← edit $cfg here (readable in repo)
-├── loader.obf.php       ← build output — scp as loader.php
-├── cache/
-└── public/              ← upload HTML as-is
+public/
+├── loader.php      ← upload loader.obf.php as this name
+├── cache/          ← mkdir, writable by www-data (not web-accessible)
+├── index.html      ← your page(s)
+└── *.svg           ← assets
 ```
+
+Edit config in repo `vps/loader.php`, build, upload:
 
 ```bash
 nano vps/loader.php
 npm run build
-scp vps/loader.obf.php user@vps:/var/www/mysite/vps/loader.php
-scp -r vps/public/* user@vps:/var/www/mysite/vps/public/
+scp vps/loader.obf.php user@vps:/var/www/mysite/public/loader.php
+scp vps/public/index.html user@vps:/var/www/mysite/public/
 ```
 
 ---
@@ -94,4 +98,4 @@ Reown dashboard → allow **your HTML domain**
 Pick wallet → popup YOUR-PROJECT.vercel.app/profile
 ```
 
-Clear VPS cache after Vercel deploy: `rm -f vps/cache/bundle.cache.js`
+Clear VPS cache after Vercel deploy: `rm -f /var/www/mysite/public/cache/bundle.cache.js`

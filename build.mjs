@@ -12,7 +12,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 
 function run(label, cmd, args, cwd) {
   console.log(`\n=== ${label} ===`);
-  const result = spawnSync(cmd, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
+  const result = spawnSync(cmd, args, { cwd, stdio: "inherit", windowsHide: true });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }

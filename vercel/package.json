@@ -11,7 +11,13 @@
     "@reown/appkit": "^1.7.8",
     "@reown/appkit-adapter-solana": "^1.7.8",
     "@solana/spl-token": "^0.4.14",
-    "@solana/web3.js": "^1.98.4"
+    "@solana/web3.js": "^1.98.4",
+    "buffer": "^6.0.3",
+    "events": "^3.3.0",
+    "process": "^0.11.10",
+    "safe-buffer": "^5.2.1",
+    "stream-browserify": "^3.0.0",
+    "util": "^0.12.5"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
