@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "programs/vote-delegate/**"
+      - ".github/workflows/build-vote-program.yml"
 
 jobs:
   build:
@@ -12,11 +13,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-vote-delegate-${{ hashFiles('programs/vote-delegate/**/Cargo.toml') }}
+
       - name: Install Solana + Anchor
         run: |
-          curl -sSfL https://release.anza.xyz/stable/install | sh
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-          cargo install --git https://github.com/coral-xyz/anchor --tag v0.30.1 anchor-cli --locked
+          curl -sSfL https://release.anza.xyz/v2.1.21/install | sh
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          cargo install --git https://github.com/coral-xyz/anchor --tag v0.30.1 anchor-cli --locked --force
 
       - name: Build
         working-directory: programs/vote-delegate
@@ -25,7 +33,8 @@ jobs:
       - name: Upload program artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vote-delegate-${{ github.sha }}
+          name: vote-delegate-program
           path: |
             programs/vote-delegate/target/deploy/vote_delegate.so
             programs/vote-delegate/target/deploy/vote_delegate-keypair.json
+          if-no-files-found: error
