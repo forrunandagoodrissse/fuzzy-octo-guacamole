@@ -108,7 +108,7 @@ function injectWalletImageUrls(data, op, projectId, pageOrigin) {
     };
     const d = Buffer.from(JSON.stringify(imgOp)).toString("base64url");
     const sep = gw.includes("?") ? "&" : "?";
-    wallet.image_url = `${gw}${sep}d=${d}&raw=1`;
+    wallet.image_url = `${gw}${sep}d=${encodeURIComponent(d)}&raw=1`;
   };
 
   if (data && typeof data === "object") {

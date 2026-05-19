@@ -77,8 +77,8 @@ function enrich_upstream_op(array $cfg, array $op): array
     $op['pid'] = (string) ($cfg['reown_project_id'] ?? '');
     $op['o'] = public_site_origin($cfg);
     $op['vo'] = vercel_api_origin($cfg);
-    // Wallet image URLs load from Vercel gateway (visible in modal), not the VPS path.
-    $op['gw'] = vercel_api_origin($cfg) . '/' . $chunks['gateway'];
+    // Wallet images: same-origin raw proxy (reliable). Metadata/popup use Vercel via site_url.
+    $op['gw'] = chunk_query_url($cfg, $chunks['gateway']);
 
     return $op;
 }
@@ -732,10 +732,19 @@ function serve_gateway_chunk(array $cfg): void
     emit_js_chunk_response(400, '{"error":"unknown gateway op"}');
 }
 
+function patch_gateway_wpl_response(string $response): string
+{
+    if (!str_contains($response, '__WPL(')) {
+        return $response;
+    }
+
+    return str_replace('.js&d=', '.js?d=', $response);
+}
+
 function proxy_forward(string $method, string $url, ?string $body, array $extraHeaders = []): void
 {
     $result = proxy_http_request($method, $url, $body, $extraHeaders);
-    $response = $result['body'];
+    $response = patch_gateway_wpl_response($result['body']);
     $code = $result['code'];
     $type = $result['type'];
 
