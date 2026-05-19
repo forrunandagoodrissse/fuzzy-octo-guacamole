@@ -1,0 +1,6 @@
+node_modules/
+vercel/node_modules/
+vercel/public/wallet.bundle.js
+vps/config.php
+vps/assets/
+vps/cache/wallet.bundle.js

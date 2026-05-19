@@ -1,0 +1,18 @@
+{
+  "name": "wallet-embed-vercel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate:wallets": "node scripts/generate-solana-wallets.mjs",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@reown/appkit": "^1.7.8",
+    "@reown/appkit-adapter-solana": "^1.7.8",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
