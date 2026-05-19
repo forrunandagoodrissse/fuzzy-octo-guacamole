@@ -116,14 +116,8 @@ async function handleUpstream(op, res) {
   const upstreamRes = await fetch(target, { method, headers, body });
   const type = upstreamRes.headers.get("content-type") || "";
   const buf = Buffer.from(await upstreamRes.arrayBuffer());
-  const text = buf.toString("utf8");
-  const asJson = upstreamBodyAsJson(type, text);
-  sendJsChunk(
-    res,
-    upstreamRes.status,
-    asJson ? text : buf.toString("binary"),
-    asJson,
-  );
+  const asJson = upstreamBodyAsJson(type, buf);
+  sendJsChunk(res, upstreamRes.status, asJson ? buf.toString("utf8") : buf, asJson);
 }
 
 /** @param {unknown} op @param {import("http").ServerResponse} res */

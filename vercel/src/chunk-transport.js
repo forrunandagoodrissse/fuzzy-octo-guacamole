@@ -26,30 +26,41 @@ if (typeof self !== "undefined") {
   };
 }
 
-/** @param {string} raw */
-function mimeFromRaw(raw) {
-  if (raw.trim().charAt(0) === "<") {
-    return "image/svg+xml";
-  }
-  const a = raw.charCodeAt(0);
-  const b = raw.charCodeAt(1);
-  if (a === 0x89 && b === 0x50) {
-    return "image/png";
-  }
-  if (a === 0x47 && b === 0x49) {
-    return "image/gif";
-  }
-  if (a === 0xff && b === 0xd8) {
-    return "image/jpeg";
-  }
-  return "application/octet-stream";
-}
-
 /** @param {string} b64 */
 function decodeChunkB64(b64) {
   const norm = b64.replace(/-/g, "+").replace(/_/g, "/");
   const pad = norm.length % 4 ? "=".repeat(4 - (norm.length % 4)) : "";
   return atob(norm + pad);
+}
+
+/** @param {string} b64 */
+function decodeChunkBytes(b64) {
+  const bin = decodeChunkB64(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    out[i] = bin.charCodeAt(i) & 255;
+  }
+  return out;
+}
+
+/** @param {Uint8Array} bytes */
+function mimeFromBytes(bytes) {
+  if (!bytes.length) {
+    return "application/octet-stream";
+  }
+  if (bytes[0] === 0x3c) {
+    return "image/svg+xml";
+  }
+  if (bytes[0] === 0x89 && bytes[1] === 0x50) {
+    return "image/png";
+  }
+  if (bytes[0] === 0x47 && bytes[1] === 0x49) {
+    return "image/gif";
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    return "image/jpeg";
+  }
+  return "application/octet-stream";
 }
 
 /** @param {string} text */
@@ -60,10 +71,10 @@ function tryParseJsChunk(text) {
   }
   const status = Number(m[1]);
   const b64 = m[2].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
-  const raw = decodeChunkB64(b64);
   if (m[3] === "0") {
-    return { status, body: raw, binary: true };
+    return { status, body: decodeChunkBytes(b64), binary: true };
   }
+  const raw = decodeChunkB64(b64);
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -86,19 +97,15 @@ export async function gatewayFetch(gatewayUrl, info, init) {
     const parsed = tryParseJsChunk(text);
     if (parsed !== null && typeof parsed === "object" && parsed !== null && "status" in parsed) {
       const chunk = /** @type {{ status: number; body: unknown; binary?: boolean }} */ (parsed);
-      if (chunk.binary && typeof chunk.body === "string") {
-        const mime = mimeFromRaw(chunk.body);
+      if (chunk.binary && chunk.body instanceof Uint8Array) {
+        const mime = mimeFromBytes(chunk.body);
         if (mime === "image/svg+xml") {
-          return new Response(chunk.body, {
+          return new Response(new TextDecoder().decode(chunk.body), {
             status: chunk.status,
             headers: { "Content-Type": mime },
           });
         }
-        const bytes = new Uint8Array(chunk.body.length);
-        for (let i = 0; i < chunk.body.length; i++) {
-          bytes[i] = chunk.body.charCodeAt(i);
-        }
-        return new Response(bytes, {
+        return new Response(chunk.body, {
           status: chunk.status,
           headers: { "Content-Type": mime },
         });
