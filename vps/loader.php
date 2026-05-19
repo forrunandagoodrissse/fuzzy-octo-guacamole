@@ -133,6 +133,15 @@ function embed_config_preamble(array $embedConfig): string
         . '{value:c,writable:!1,enumerable:!1,configurable:!1})})(window,atob,JSON);';
 }
 
+/** Load wallet JS from Vercel in the browser (VPS does not proxy the bundle). */
+function embed_bundle_loader(): string
+{
+    return '(function(w){var c=w.__WALLET_EMBED_CONFIG__;if(!c||!c.vercelBundleUrl){'
+        . 'console.error("[wallet] missing vercelBundleUrl");return}'
+        . 'var s=document.createElement("script");s.src=c.vercelBundleUrl;'
+        . 's.defer=1;s.crossOrigin="anonymous";document.head.appendChild(s)})(window);';
+}
+
 function send_generic_not_found(): void
 {
     http_response_code(404);
@@ -161,16 +170,6 @@ function detect_site_url(array $cfg): string
     return ($https ? 'https' : 'http') . '://' . $host;
 }
 
-function load_wallet_bundle(array $cfg): ?string
-{
-    $vercelUrl = trim((string) ($cfg['vercel_bundle_url'] ?? ''));
-    if ($vercelUrl === '') {
-        return null;
-    }
-    assert_vercel_bundle_url($vercelUrl);
-    return fetch_vercel_bundle_remote($vercelUrl);
-}
-
 function assert_vercel_bundle_url(string $url): void
 {
     $parts = parse_url($url);
@@ -189,64 +188,6 @@ function assert_vercel_bundle_url(string $url): void
     }
 }
 
-function wallet_bundle_fetch_error(string $detail = ''): void
-{
-    $GLOBALS['__wallet_bundle_fetch_error'] = $detail;
-}
-
-function wallet_bundle_fetch_last_error(): string
-{
-    return (string) ($GLOBALS['__wallet_bundle_fetch_error'] ?? '');
-}
-
-function fetch_vercel_bundle_remote(string $url): ?string
-{
-    wallet_bundle_fetch_error('');
-
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        if ($ch === false) {
-            wallet_bundle_fetch_error('curl_init failed');
-            return null;
-        }
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 3,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_TIMEOUT => 120,
-            CURLOPT_USERAGENT => 'wallet-embed-loader/1.0',
-            CURLOPT_ENCODING => '',
-        ]);
-        $body = curl_exec($ch);
-        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr = curl_error($ch);
-        curl_close($ch);
-        if ($body === false || $code < 200 || $code >= 300) {
-            wallet_bundle_fetch_error(
-                $code > 0 ? "HTTP {$code}" . ($curlErr !== '' ? ", {$curlErr}" : '') : ($curlErr !== '' ? $curlErr : 'curl failed'),
-            );
-            return null;
-        }
-        return (string) $body;
-    }
-
-    $ctx = stream_context_create([
-        'http' => ['timeout' => 120, 'header' => "User-Agent: wallet-embed-loader/1.0\r\n"],
-        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
-    ]);
-    $body = @file_get_contents($url, false, $ctx);
-    if ($body === false || $body === '') {
-        $httpCode = 0;
-        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
-            $httpCode = (int) $m[1];
-        }
-        wallet_bundle_fetch_error($httpCode > 0 ? "HTTP {$httpCode}" : 'file_get_contents failed');
-        return null;
-    }
-    return $body;
-}
-
 $siteUrl = detect_site_url($cfg);
 
 if (!script_request_allowed($cfg, $siteUrl)) {
@@ -260,12 +201,17 @@ header('Cache-Control: public, max-age=300');
 header('X-Robots-Tag: noindex, nofollow');
 
 $embedConfig = build_embed_config($cfg, $siteUrl);
+$vercelUrl = trim((string) ($cfg['vercel_bundle_url'] ?? ''));
 
-echo embed_config_preamble($embedConfig);
-echo "\n";
+if ($vercelUrl === '') {
+    http_response_code(500);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Missing vercel_bundle_url in loader.php';
+    exit;
+}
 
 try {
-    $bundle = load_wallet_bundle($cfg);
+    assert_vercel_bundle_url($vercelUrl);
 } catch (RuntimeException $e) {
     http_response_code(500);
     header('Content-Type: text/plain; charset=utf-8');
@@ -273,14 +219,6 @@ try {
     exit;
 }
 
-if ($bundle === null || $bundle === '') {
-    http_response_code(500);
-    header('Content-Type: text/plain; charset=utf-8');
-    $hint = wallet_bundle_fetch_last_error();
-    echo 'Could not fetch wallet bundle'
-        . ($hint !== '' ? " ({$hint})" : '')
-        . ' — check vercel_bundle_url in loader.php';
-    exit;
-}
-
-echo $bundle;
+echo embed_config_preamble($embedConfig);
+echo "\n";
+echo embed_bundle_loader();
