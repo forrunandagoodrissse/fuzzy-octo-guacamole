@@ -79,10 +79,16 @@ function createWalletModal(config) {
     return null;
   }
 
+  const pageUrl = (
+    (typeof window !== "undefined" && window.location?.origin) ||
+    config.siteUrl ||
+    ""
+  ).replace(/\/$/, "");
+
   const metadata = {
     name: config.siteName || "Website",
     description: config.siteDescription || "Connect your Solana wallet",
-    url: (config.siteUrl || "").replace(/\/$/, ""),
+    url: pageUrl,
     icons: config.siteIcons?.length
       ? config.siteIcons
       : [`${window.location.origin}/favicon.ico`],

