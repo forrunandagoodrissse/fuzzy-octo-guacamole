@@ -1,5 +1,5 @@
 /* AUTO-GENERATED — npm run generate:wallets */
-/* Curated grid wallets; projectId from vps/config.php only */
+/* Curated grid wallets; projectId from vps/loader.php only */
 
 export const FEATURED_WALLET_IDS = [
   "a797aa35c0fadbfc1a53e7f675162ed5226968b44a19ee3d24385c64d1d3c393",

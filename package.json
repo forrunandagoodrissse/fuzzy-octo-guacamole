@@ -1,0 +1,7 @@
+{
+  "name": "wallet-embed",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

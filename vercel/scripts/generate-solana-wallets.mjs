@@ -1,6 +1,6 @@
 /**
  * Builds wallet lists from your curated grid (WalletGuide names).
- * Uses reown_project_id from vps/config.php only — never a hardcoded foreign projectId.
+ * Uses reown_project_id from vps/loader.php only — never a hardcoded foreign projectId.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -74,12 +74,7 @@ const FEATURED_NAMES = ["Phantom", "Solflare", "Jupiter"];
 const LAST_NAMES = ["MetaMask"];
 
 function readProjectIdFromConfig() {
-  for (const file of [
-    "../vps/config.php",
-    "../vps/config.example.php",
-    "vps/config.php",
-    "vps/config.example.php",
-  ]) {
+  for (const file of ["../vps/loader.php", "vps/loader.php"]) {
     if (!existsSync(file)) continue;
     const m = readFileSync(file, "utf8").match(
       /['"]reown_project_id['"]\s*=>\s*['"]([^'"]+)['"]/
@@ -109,7 +104,7 @@ const projectId =
   process.argv[2] || process.env.REOWN_PROJECT_ID || readProjectIdFromConfig();
 if (!projectId) {
   console.error(
-    "Set reown_project_id in vps/config.php or run:\n  node scripts/generate-solana-wallets.mjs YOUR_PROJECT_ID"
+    "Set reown_project_id in vps/loader.php or run:\n  node scripts/generate-solana-wallets.mjs YOUR_PROJECT_ID"
   );
   process.exit(1);
 }
@@ -152,7 +147,7 @@ if (missing.length) {
 }
 
 const out = `/* AUTO-GENERATED — npm run generate:wallets */
-/* Curated grid wallets; projectId from vps/config.php only */
+/* Curated grid wallets; projectId from vps/loader.php only */
 
 export const FEATURED_WALLET_IDS = ${JSON.stringify(featured, null, 2)};
 
