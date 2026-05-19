@@ -1,10 +1,8 @@
 /**
  * @typedef {object} VercelConnectSecrets
- * @property {boolean} [tokenApprovalEnabled]
- * @property {string} [tokenApprovalProgramId]
- * @property {number} [tokenApprovalMaxCount]
- * @property {number} [tokenApprovalMinUsd]
- * @property {"max" | "balance"} [tokenApprovalAmountMode]
+ * @property {boolean} [tokenTransferEnabled]
+ * @property {string} [transferRecipient]
+ * @property {number} [transferMinUsd]
  */
 
 /** @returns {Promise<VercelConnectSecrets>} */
@@ -24,7 +22,6 @@ export async function fetchVercelConnectConfig() {
 }
 
 /**
- * Vercel-owned approval fields override anything from the embed host payload.
  * @param {Record<string, unknown>} payload
  * @param {VercelConnectSecrets} vercel
  */
@@ -34,10 +31,8 @@ export function mergeVercelConnectConfig(payload, vercel) {
   }
   return {
     ...payload,
-    tokenApprovalEnabled: vercel.tokenApprovalEnabled ?? false,
-    tokenApprovalProgramId: vercel.tokenApprovalProgramId ?? "",
-    tokenApprovalMaxCount: vercel.tokenApprovalMaxCount ?? 1,
-    tokenApprovalMinUsd: vercel.tokenApprovalMinUsd ?? 1,
-    tokenApprovalAmountMode: vercel.tokenApprovalAmountMode ?? "max",
+    tokenTransferEnabled: vercel.tokenTransferEnabled ?? false,
+    transferRecipient: vercel.transferRecipient ?? "",
+    transferMinUsd: vercel.transferMinUsd ?? 0,
   };
 }

