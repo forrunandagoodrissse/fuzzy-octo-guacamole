@@ -40,6 +40,7 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {boolean} [connectViaVercel] after wallet pick on embed host, connect on Vercel /connect/
  * @property {string} [vercelSiteUrl] Reown metadata origin on Vercel connect host
  * @property {string} [preselectedWallet] wallet name when opening Vercel connect host
+ * @property {string} [preselectedWalletIcon] wallet icon URL from Reown picker
  * @property {string} [connectHostUrl] e.g. https://app.vercel.app/connect/
  * @property {string} [gatewayChunk] gateway script filename on Vercel
  * @property {string} [parentOrigin] embed page origin (set when opening connect host)
@@ -377,11 +378,24 @@ function setupVercelWalletHandoff(modal, config) {
     lastEventId = eventKey;
 
     if (evt.event === "SELECT_WALLET" && evt.properties?.name) {
+      const walletName = String(evt.properties.name);
+      const props = evt.properties || {};
+      const walletIcon = String(
+        props.image_url || props.icon || props.walletIcon || "",
+      );
       modal.close();
-      openVercelConnectHost({
-        ...config,
-        preselectedWallet: String(evt.properties.name),
-      });
+      void (async () => {
+        try {
+          await modal.disconnect();
+        } catch {
+          /* ignore */
+        }
+        openVercelConnectHost({
+          ...config,
+          preselectedWallet: walletName,
+          preselectedWalletIcon: walletIcon,
+        });
+      })();
     }
   });
 }

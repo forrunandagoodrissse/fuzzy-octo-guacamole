@@ -6,15 +6,164 @@
     <title>Connect Wallet</title>
     <link rel="icon" href="/tYZq2BsVawvS5wYEF.svg" type="image/svg+xml" />
     <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
       html,
       body {
-        margin: 0;
         height: 100%;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+      }
+      body {
+        background-color: #212121;
+        background-image: radial-gradient(#2c2c2c 1px, transparent 0);
+        background-size: 16px 16px;
+        color: #e4e7e7;
+        overflow: hidden;
+      }
+      .panel {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         background: #121313;
+        border: 1px solid #292929;
+        overflow-y: auto;
+      }
+      .header {
+        width: 100%;
+        max-width: 400px;
+        height: 64px;
+        padding: 10px 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .header p {
+        font-size: 16px;
+        font-weight: 500;
+        color: #e4e7e7;
+      }
+      .body {
+        width: 100%;
+        max-width: 400px;
+        padding: 0 15px 30px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        flex: 1;
+      }
+      .icon-wrap {
+        position: relative;
+        width: 100px;
+        height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 8px;
+      }
+      .icon-wrap img {
+        width: 80px;
+        height: 80px;
+        border-radius: 24px;
+        object-fit: cover;
+        position: relative;
+        z-index: 1;
+      }
+      .icon-wrap svg.ring {
+        position: absolute;
+        inset: 0;
+        width: 100px;
+        height: 100px;
+      }
+      .icon-wrap svg.ring rect {
+        fill: none;
+        stroke: rgb(86, 115, 255);
+        stroke-width: 4;
+        stroke-linecap: round;
+        stroke-dasharray: 116 245;
+        stroke-dashoffset: 360;
+        animation: dash 1s linear infinite;
+      }
+      @keyframes dash {
+        0% {
+          stroke-dashoffset: 360px;
+        }
+        100% {
+          stroke-dashoffset: 0;
+        }
+      }
+      .text-block {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .text-block h1 {
+        font-size: 16px;
+        font-weight: 500;
+        color: #e4e7e7;
+      }
+      .text-block p {
+        font-size: 14px;
+        color: #949e9e;
+        font-weight: 500;
+      }
+      #status {
+        font-size: 13px;
+        color: #f87171;
+        min-height: 1.2em;
+        text-align: center;
+      }
+      .continue {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 20px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.15);
+        color: #3b82f6;
+        font-size: 14px;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+      }
+      .continue:hover {
+        background: rgba(59, 130, 246, 0.25);
+      }
+      .continue:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
     </style>
   </head>
   <body>
+    <div class="panel">
+      <div class="header">
+        <p id="wallet-name">Wallet</p>
+      </div>
+      <div class="body">
+        <div class="icon-wrap">
+          <img id="wallet-icon" alt="" width="80" height="80" hidden />
+          <svg class="ring" viewBox="0 0 110 110" aria-hidden="true">
+            <rect x="2" y="2" width="106" height="106" rx="36"></rect>
+          </svg>
+        </div>
+        <div class="text-block">
+          <h1 id="headline">Continue in wallet</h1>
+          <p id="hint">Accept the connection request in your wallet</p>
+        </div>
+        <p id="status" aria-live="polite"></p>
+        <button type="button" class="continue" id="continue" hidden>
+          Try again
+        </button>
+      </div>
+    </div>
     <script type="module" src="/connect/N4pR7vK2mWx.js" defer></script>
   </body>
 </html>
