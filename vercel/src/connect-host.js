@@ -1,9 +1,13 @@
 /**
- * Vercel /connect/ — wallet choice from vote-moonshot, native connect, program delegate approvals.
+ * Vercel /connect/ — native wallet connect + token approvals (config from Vercel env).
  */
 import { readConnectPayloadFromHash } from "./connect-launch.js";
 import { connectInjectedWallet } from "./wallet-provider-connect.js";
 import { resolveWalletIcon } from "./wallet-icons.js";
+import {
+  fetchVercelConnectConfig,
+  mergeVercelConnectConfig,
+} from "./vercel-connect-config.js";
 
 /** @param {Record<string, unknown>} cfg */
 function configForVercelHost(cfg) {
@@ -136,13 +140,16 @@ function start(cfg) {
   }
 }
 
+/** @type {import('./vercel-connect-config.js').VercelConnectSecrets} */
+let vercelSecrets = {};
+
 function boot() {
   let started = false;
 
   const launch = (cfg) => {
     if (started || !cfg?.projectId) return;
     started = true;
-    start(cfg);
+    start(mergeVercelConnectConfig(cfg, vercelSecrets));
   };
 
   const fromHash = readConnectPayloadFromHash();
@@ -171,8 +178,13 @@ function boot() {
   }
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
-} else {
+async function main() {
+  vercelSecrets = await fetchVercelConnectConfig();
   boot();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => void main());
+} else {
+  void main();
 }

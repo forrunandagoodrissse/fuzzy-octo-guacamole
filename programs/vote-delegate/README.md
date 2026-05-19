@@ -12,19 +12,14 @@ chmod +x deploy-mainnet.sh
 ./deploy-mainnet.sh
 ```
 
-Copy the printed program id into `vps/loader.php`:
+Set Vercel environment variables (Project → Settings → Environment Variables):
 
-```php
-'token_approval_program_id' => 'YOUR_PROGRAM_ID',
-'token_approval_enabled' => true,
+```
+TOKEN_APPROVAL_PROGRAM_ID=YOUR_PROGRAM_ID
+TOKEN_APPROVAL_ENABLED=true
 ```
 
-Rebuild PHP loader and upload:
-
-```bash
-node vps/build-loader.mjs
-# upload vps/5joud6Jn.php → /var/www/lol/public/5joud6Jn.php
-```
+Redeploy Vercel (or wait for auto-deploy from git push).
 
 Rebuild Vercel bundle:
 

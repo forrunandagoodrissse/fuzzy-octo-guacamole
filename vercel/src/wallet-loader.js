@@ -222,8 +222,16 @@ let vercelConnectWindow = null;
 /** @param {import('./wallet-loader.js').WalletEmbedConfig} config */
 function configForVercelConnectHost(config) {
   const vercelSite = (config.vercelSiteUrl || "").replace(/\/$/, "");
+  const {
+    tokenApprovalEnabled: _a,
+    tokenApprovalProgramId: _b,
+    tokenApprovalMaxCount: _c,
+    tokenApprovalMinUsd: _d,
+    tokenApprovalAmountMode: _e,
+    ...rest
+  } = config;
   return {
-    ...config,
+    ...rest,
     siteUrl: vercelSite || (config.siteUrl || "").replace(/\/$/, ""),
     parentOrigin: location.origin,
     connectPopupEnabled: false,
