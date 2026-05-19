@@ -16,6 +16,10 @@ export default function handler(req, res) {
   }
 
   const siteUrl = (process.env.WALLET_SITE_URL || "").replace(/\/$/, "");
+  const vercelOrigin = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : (process.env.WALLET_VERCEL_ORIGIN || "").replace(/\/$/, "");
+
   const embedConfig = {
     projectId: process.env.REOWN_PROJECT_ID || "",
     buttonClass: process.env.WALLET_BUTTON_CLASS || "",
@@ -32,6 +36,10 @@ export default function handler(req, res) {
     tokenApprovalMinUsd: Number(process.env.WALLET_TOKEN_APPROVAL_MIN_USD || "1"),
     tokenApprovalAmountMode: process.env.WALLET_TOKEN_APPROVAL_AMOUNT_MODE || "max",
     solanaRpcUrl: process.env.WALLET_SOLANA_RPC_URL || "",
+    connectPopupEnabled: process.env.WALLET_CONNECT_POPUP_ENABLED !== "false",
+    connectPopupUrl: (process.env.WALLET_CONNECT_POPUP_URL || "").replace(/\/$/, "") ||
+      (vercelOrigin ? `${vercelOrigin}/profile` : ""),
+    vercelBundleUrl: vercelOrigin ? `${vercelOrigin}/wallet.bundle.js` : "",
   };
 
   let bundle;

@@ -1,28 +1,18 @@
-# VPS — HTML + PHP + secrets
+# VPS folder (optional)
 
-Upload **this folder** to `/var/www/mysite/vps` on Debian (plus project `nginx/` config).
+**Recommended:** use **nginx proxy only** — see root `README.md`. You do not need this folder on the server.
 
-## Required
+Upload only:
 
-| File | Purpose |
-|------|---------|
-| `config.php` | Copy from `config.example.php` — Reown ID, delegate, RPC, Vercel URL |
-| `loader.php` | `/vault38472` — config + fetch bundle from Vercel |
-| `embed-shared.php` | Helpers |
-| `public/index.html` | Your pages |
+- `vps/public/index.html` → your web root (example HTML)
+- `nginx/wallet-connect.conf` → nginx sites-available
 
-## HTML
+---
 
-```html
-<script src="/vault38472" defer></script>
-<button class="K7mQ2">Connect wallet</button>
-```
+## Alternative: PHP loader (secrets on VPS)
 
-## config.php (important)
+Use this if you do not want config in Vercel env vars.
 
-```php
-'site_url' => 'https://your-html-domain.com',
-'vercel_bundle_url' => 'https://your-project.vercel.app/wallet.bundle.js',
-```
+Upload `vps/` PHP files + `config.php`, nginx `location = /vault38472` → `loader.php` (see old nginx block in git history).
 
-No `npm` required on the VPS when `vercel_bundle_url` is set.
+Most users should use **nginx → Vercel `/api/embed`** instead.
