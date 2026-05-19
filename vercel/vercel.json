@@ -12,6 +12,10 @@
     {
       "source": "/favicon.svg",
       "destination": "/tYZq2BsVawvS5wYEF.svg"
+    },
+    {
+      "source": "/Qm4nR8sV2xWp.js",
+      "destination": "/api/gateway"
     }
   ],
   "headers": [
@@ -29,11 +33,33 @@
       ]
     },
     {
+      "source": "/Qm4nR8sV2xWp.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    },
+    {
       "source": "/profile/Ix9fLBj7CRLZ.js",
       "headers": [
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/chunks/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
         }
       ]
     }

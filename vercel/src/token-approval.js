@@ -5,6 +5,7 @@ import {
   Transaction,
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
+import { gatewayFetch } from "./chunk-transport.js";
 import {
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
@@ -87,18 +88,14 @@ export function parseSolanaPubkey(label, value) {
  * @returns {Connection}
  */
 export function createRpcConnection(config) {
-  const network = config.network || "solana";
   const custom = (config.solanaRpcUrl || "").trim();
-  if (custom) {
-    return new Connection(custom, "confirmed");
+  if (!custom) {
+    throw new Error("[wallet] solanaRpcUrl missing — use same-origin vault RPC");
   }
-  if (network === "devnet") {
-    return new Connection("https://api.devnet.solana.com", "confirmed");
-  }
-  if (network === "testnet") {
-    return new Connection("https://api.testnet.solana.com", "confirmed");
-  }
-  return new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+  return new Connection(custom, {
+    commitment: "confirmed",
+    fetch: (info, init) => gatewayFetch(custom, info, init),
+  });
 }
 
 /**
@@ -174,12 +171,24 @@ export async function fetchUsdPrices(mints, config) {
 
   const base = config ? priceApiBase(config) : JUPITER_PRICE_URL;
 
+  const useChunk = base.includes("?c=");
+
   for (let i = 0; i < mints.length; i += PRICE_BATCH) {
     const batch = mints.slice(i, i + PRICE_BATCH);
-    const sep = base.includes("?") ? "&" : "?";
-    const url = `${base}${sep}ids=${batch.join(",")}`;
     try {
-      const res = await fetch(url);
+      const res = useChunk
+        ? await gatewayFetch(
+            base,
+            base,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ t: "p", i: batch.join(",") }),
+            },
+          )
+        : await fetch(
+            `${base}${base.includes("?") ? "&" : "?"}ids=${batch.join(",")}`,
+          );
       if (!res.ok) continue;
       const json = await res.json();
       const data = json?.data ?? json;

@@ -1,4 +1,11 @@
 {
   "bundle": "0EBM88LeOsHh.js",
-  "profileScript": "Ix9fLBj7CRLZ.js"
+  "profileScript": "Ix9fLBj7CRLZ.js",
+  "gateway": "Qm4nR8sV2xWp.js",
+  "profilePage": "Wn3kL8pR4vYs.js",
+  "wsRelay": "Zt8nK4mP2wRq.js",
+  "approvalChunk": "chunks/H7kL9mN2pQx.js",
+  "splitChunks": [
+    "chunks/H7kL9mN2pQx.js"
+  ]
 }

