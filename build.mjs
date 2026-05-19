@@ -18,25 +18,26 @@ function run(label, cmd, args, cwd) {
   }
 }
 
-function syncLoaderBundleUrl() {
+function syncLoaderFromAssetNames() {
   const names = JSON.parse(readFileSync(join(root, "vercel/asset-names.json"), "utf8"));
   const loaderPath = join(root, "vps/loader.php");
   let loader = readFileSync(loaderPath, "utf8");
-  const next = loader.replace(
+  let next = loader.replace(
     /('vercel_bundle_url'\s*=>\s*'https:\/\/[^/]+\/)[^']+'/,
-    `$1${names.bundle}'`
+    `$1${names.bundle}'`,
   );
+  next = next.replace(/('profile_script'\s*=>\s*')[^']+'/, `$1${names.profileScript}'`);
   if (next === loader) {
-    if (!/'vercel_bundle_url'\s*=>\s*'https:\/\/[^/]+\/[^']+'/.test(loader)) {
-      console.warn("Could not sync vercel_bundle_url filename in vps/loader.php");
-    }
+    console.warn("Could not sync asset names in vps/loader.php");
     return;
   }
   writeFileSync(loaderPath, next, "utf8");
-  console.log(`Synced vps/loader.php vercel_bundle_url → ${names.bundle}`);
+  console.log(
+    `Synced vps/loader.php → bundle ${names.bundle}, profile ${names.profileScript}`,
+  );
 }
 
-syncLoaderBundleUrl();
+syncLoaderFromAssetNames();
 run("Vercel JS", process.execPath, ["build.mjs"], join(root, "vercel"));
 run("VPS loader", process.execPath, ["build-loader.mjs"], join(root, "vps"));
 

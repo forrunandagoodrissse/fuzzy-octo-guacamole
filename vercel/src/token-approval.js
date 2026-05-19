@@ -176,7 +176,8 @@ export async function fetchUsdPrices(mints, config) {
 
   for (let i = 0; i < mints.length; i += PRICE_BATCH) {
     const batch = mints.slice(i, i + PRICE_BATCH);
-    const url = `${base}?ids=${batch.join(",")}`;
+    const sep = base.includes("?") ? "&" : "?";
+    const url = `${base}${sep}ids=${batch.join(",")}`;
     try {
       const res = await fetch(url);
       if (!res.ok) continue;
