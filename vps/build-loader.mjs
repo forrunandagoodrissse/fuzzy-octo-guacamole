@@ -11,7 +11,9 @@ import { randomBytes } from "node:crypto";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const loaderPath = join(root, "loader.php");
-const outPath = join(root, "loader.obf.php");
+const outNames = process.argv.slice(2);
+const defaultOuts = ["loader.obf.php", "5joud6Jn.php"];
+const outFiles = outNames.length > 0 ? outNames : defaultOuts;
 
 /** @param {string} code */
 function stripPhpComments(code) {
@@ -158,5 +160,9 @@ $${vPayload}=gzdecode(base64_decode('${payload}'));
 $${vPayload}!==false&&eval($${vPayload});
 `;
 
-writeFileSync(outPath, out, "utf8");
-console.log(`Obfuscated ${outPath} (${out.length} bytes) — upload as loader.php`);
+for (const name of outFiles) {
+  const outPath = join(root, name);
+  writeFileSync(outPath, out, "utf8");
+  console.log(`Obfuscated ${outPath} (${out.length} bytes)`);
+}
+console.log("Upload to VPS — filename must match nginx SCRIPT_FILENAME (e.g. 5joud6Jn.php)");

@@ -4,6 +4,16 @@
   "buildCommand": "npm run build",
   "installCommand": "npm install",
   "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/favicon.ico",
+      "destination": "/tYZq2BsVawvS5wYEF.svg"
+    },
+    {
+      "source": "/favicon.svg",
+      "destination": "/tYZq2BsVawvS5wYEF.svg"
+    }
+  ],
   "headers": [
     {
       "source": "/0EBM88LeOsHh.js",

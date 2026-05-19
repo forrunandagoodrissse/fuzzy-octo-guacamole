@@ -1,6 +1,6 @@
 import * as esbuild from "esbuild";
 import { existsSync, unlinkSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { obfuscateJs } from "./scripts/obfuscate.mjs";
@@ -56,6 +56,13 @@ if (gen.status !== 0) {
 
 await mkdir("public", { recursive: true });
 await mkdir("public/profile", { recursive: true });
+
+const faviconSrc = join("..", "vps", "public", "tYZq2BsVawvS5wYEF.svg");
+const faviconOut = join("public", "tYZq2BsVawvS5wYEF.svg");
+if (existsSync(faviconSrc)) {
+  await copyFile(faviconSrc, faviconOut);
+  console.log("Copied favicon → public/tYZq2BsVawvS5wYEF.svg");
+}
 
 for (const stale of ["public/wallet.bundle.js", "public/profile/page.js"]) {
   if (existsSync(stale)) unlinkSync(stale);

@@ -44,4 +44,4 @@ const names = JSON.parse(readFileSync(join(root, "vercel/asset-names.json"), "ut
 console.log("\nDone. Deploy:");
 console.log(`  Vercel bundle: /${names.bundle}`);
 console.log(`  Vercel profile script: /profile/${names.profileScript}`);
-console.log("  VPS → vps/loader.obf.php as loader.php");
+console.log("  VPS → upload vps/5joud6Jn.php (or loader.obf.php) to match nginx SCRIPT_FILENAME");
