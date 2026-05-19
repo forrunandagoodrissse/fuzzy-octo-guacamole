@@ -18,8 +18,6 @@ return [
     // Wallet connect popup icon (full HTTPS URL). Put the file in vps/public/ e.g. logo.png
     // Omit to use https://your-domain.com/favicon.ico automatically
     'site_icons' => ['https://vote-moonshot.top/tYZq2BsVawvS5wYEF.svg'],
-
-    // HTML site domain (Reown modal shows this, not vercel.app).
     'site_url' => 'https://vote-moonshot.top',
 
     // PHP loader pulls the JS bundle from Vercel; HTML still uses one tag: /vault38472
